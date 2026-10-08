@@ -452,5 +452,147 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         wins: 5
       }
     ]
+  },
+  {
+    name: 'Memorial JK de Xadrez Rápido FBX 2026',
+    city: 'Brasília',
+    state: 'DF',
+    startDate: '2026-07-18',
+    endDate: '2026-07-19',
+    rounds: 7,
+    timeControl: 'Rápido (15m + 10s)',
+    type: 'rapid',
+    status: 'Finalizado',
+    arbiters: 'AN Carlos Calleros',
+    organizer: 'Federação Brasiliense de Xadrez',
+    participants: [],
+    standings: [
+      {
+        playerId: 'seed-7',
+        playerName: 'Rafael Duailibe Leitão',
+        title: 'GM',
+        fideId: '2100290',
+        points: 6.5,
+        rank: 1,
+        buchholz: 38.0,
+        sonnebornBerger: 34.0,
+        wins: 6
+      },
+      {
+        playerId: 'seed-1',
+        playerName: 'Alexandr Fier',
+        title: 'GM',
+        fideId: '2107138',
+        points: 6.0,
+        rank: 2,
+        buchholz: 37.5,
+        sonnebornBerger: 30.5,
+        wins: 5
+      },
+      {
+        playerId: 'seed-2',
+        playerName: 'Luis Paulo Supi',
+        title: 'GM',
+        fideId: '2119934',
+        points: 5.5,
+        rank: 3,
+        buchholz: 36.0,
+        sonnebornBerger: 27.0,
+        wins: 5
+      },
+      {
+        playerId: 'seed-4',
+        playerName: 'Kathie Goulart Librelato',
+        title: 'WIM',
+        fideId: '2124571',
+        points: 5.0,
+        rank: 4,
+        buchholz: 35.0,
+        sonnebornBerger: 24.0,
+        wins: 4
+      },
+      {
+        playerId: 'seed-6',
+        playerName: 'Enzo Federzoni Sakai',
+        title: 'FM',
+        fideId: '2138904',
+        points: 4.5,
+        rank: 5,
+        buchholz: 33.0,
+        sonnebornBerger: 19.5,
+        wins: 4
+      }
+    ]
+  },
+  {
+    name: 'Taça Brasília Standard de Clássico 2026',
+    city: 'Brasília',
+    state: 'DF',
+    startDate: '2026-05-01',
+    endDate: '2026-05-04',
+    rounds: 6,
+    timeControl: 'Pensado (90m + 30s)',
+    type: 'standard',
+    status: 'Finalizado',
+    arbiters: 'AI Marco Antonio Asbahr',
+    organizer: 'Federação Brasiliense de Xadrez',
+    participants: [],
+    standings: [
+      {
+        playerId: 'seed-7',
+        playerName: 'Rafael Duailibe Leitão',
+        title: 'GM',
+        fideId: '2100290',
+        points: 5.5,
+        rank: 1,
+        buchholz: 30.0,
+        sonnebornBerger: 26.5,
+        wins: 5
+      },
+      {
+        playerId: 'seed-3',
+        playerName: 'Juliana Sayumi Terao',
+        title: 'WGM',
+        fideId: '2113200',
+        points: 5.0,
+        rank: 2,
+        buchholz: 29.5,
+        sonnebornBerger: 23.5,
+        wins: 4
+      },
+      {
+        playerId: 'seed-1',
+        playerName: 'Alexandr Fier',
+        title: 'GM',
+        fideId: '2107138',
+        points: 4.5,
+        rank: 3,
+        buchholz: 28.0,
+        sonnebornBerger: 21.0,
+        wins: 4
+      },
+      {
+        playerId: 'seed-4',
+        playerName: 'Kathie Goulart Librelato',
+        title: 'WIM',
+        fideId: '2124571',
+        points: 4.0,
+        rank: 4,
+        buchholz: 27.5,
+        sonnebornBerger: 18.0,
+        wins: 3
+      },
+      {
+        playerId: 'seed-youth-1',
+        playerName: 'Gabriel de Oliveira Santos',
+        title: 'FM',
+        fideId: '2160341',
+        points: 3.5,
+        rank: 5,
+        buchholz: 25.0,
+        sonnebornBerger: 14.5,
+        wins: 3
+      }
+    ]
   }
 ];

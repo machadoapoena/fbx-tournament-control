@@ -278,8 +278,10 @@ export default function App() {
             {activeTab === 'dashboard' && (
               <StatsOverview
                 players={players}
+                tournaments={tournaments}
                 onSelectFilter={handleSelectFilterFromStats}
                 onNavigateToPlayers={() => setActiveTab('players')}
+                onNavigateToTournaments={() => setActiveTab('tournaments')}
               />
             )}
 

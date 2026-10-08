@@ -9,7 +9,11 @@ import {
   Users, 
   Award, 
   Globe,
-  MapPin
+  MapPin,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 
 interface AgeGroupPlayersModalProps {
@@ -28,6 +32,8 @@ export const AgeGroupPlayersModal: React.FC<AgeGroupPlayersModalProps> = ({
   players,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Close on ESC
   useEffect(() => {
@@ -40,12 +46,18 @@ export const AgeGroupPlayersModal: React.FC<AgeGroupPlayersModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Reset search when opening
+  // Reset search and pagination when opening
   useEffect(() => {
     if (isOpen) {
       setSearchTerm('');
+      setCurrentPage(1);
     }
   }, [isOpen, groupTitle]);
+
+  // Reset to page 1 on filter or page size change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, pageSize]);
 
   const filteredPlayers = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
@@ -60,6 +72,17 @@ export const AgeGroupPlayersModal: React.FC<AgeGroupPlayersModalProps> = ({
         (p.title && p.title.toLowerCase().includes(term))
     );
   }, [players, searchTerm]);
+
+  // Pagination calculations
+  const totalCount = filteredPlayers.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (validCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalCount);
+
+  const paginatedPlayers = useMemo(() => {
+    return filteredPlayers.slice(startIndex, endIndex);
+  }, [filteredPlayers, startIndex, endIndex]);
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return 'Não informada';
@@ -131,8 +154,16 @@ export const AgeGroupPlayersModal: React.FC<AgeGroupPlayersModalProps> = ({
             )}
           </div>
 
-          <div className="text-xs text-stone-700 font-medium">
-            Exibindo <span className="font-bold text-stone-900">{filteredPlayers.length}</span> de <span className="font-bold text-stone-900">{players.length}</span> atletas
+          <div className="text-xs text-stone-700 font-medium flex items-center gap-2">
+            <span>
+              Exibindo <span className="font-bold text-stone-900">{totalCount > 0 ? startIndex + 1 : 0}-{endIndex}</span> de{' '}
+              <span className="font-bold text-stone-900">{totalCount}</span> atletas
+            </span>
+            {totalPages > 1 && (
+              <span className="text-stone-400 font-mono text-[11px]">
+                (Pág. {validCurrentPage}/{totalPages})
+              </span>
+            )}
           </div>
         </div>
 
@@ -176,7 +207,7 @@ export const AgeGroupPlayersModal: React.FC<AgeGroupPlayersModalProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
-                  {filteredPlayers.map((player) => {
+                  {paginatedPlayers.map((player) => {
                     const age = calculateAge(player.birthDate);
                     const fideProfileUrl = player.fideUrl || (player.fideId ? `https://ratings.fide.com/profile/${player.fideId}` : '');
                     const cbxProfileUrl = player.cbxUrl || (player.cbxId ? `https://www.cbx.org.br/jogador/${player.cbxId}` : '');
@@ -286,6 +317,117 @@ export const AgeGroupPlayersModal: React.FC<AgeGroupPlayersModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Pagination Bar */}
+        {totalCount > 0 && (
+          <div className="px-4 sm:px-6 py-3 bg-stone-50 border-t border-stone-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            {/* Left: Range and Items Per Page */}
+            <div className="flex items-center gap-3">
+              <span className="text-stone-600 font-medium">
+                Mostrando <span className="font-bold text-stone-900">{totalCount > 0 ? startIndex + 1 : 0}</span> a{' '}
+                <span className="font-bold text-stone-900">{endIndex}</span> de{' '}
+                <span className="font-bold text-stone-900">{totalCount}</span> enxadristas
+              </span>
+
+              <div className="flex items-center gap-1.5 border-l border-stone-200 pl-3">
+                <span className="text-stone-500 text-[11px]">Por página:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="px-2 py-1 bg-white border border-stone-200 rounded-lg text-xs font-mono font-medium focus:outline-none focus:ring-1 focus:ring-stone-900 cursor-pointer shadow-2xs"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Right: Page Navigation Buttons */}
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                {/* First Page */}
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={validCurrentPage === 1}
+                  className="p-1.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed text-stone-700 transition-colors cursor-pointer"
+                  title="Primeira página"
+                >
+                  <ChevronsLeft className="w-4 h-4" />
+                </button>
+
+                {/* Prev Page */}
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={validCurrentPage === 1}
+                  className="p-1.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed text-stone-700 transition-colors cursor-pointer"
+                  title="Página anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                {/* Numeric Page Buttons */}
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((pageNumber) => {
+                      return (
+                        pageNumber === 1 ||
+                        pageNumber === totalPages ||
+                        Math.abs(pageNumber - validCurrentPage) <= 1
+                      );
+                    })
+                    .map((pageNumber, idx, arr) => {
+                      const prevPage = arr[idx - 1];
+                      const showEllipsis = prevPage && pageNumber - prevPage > 1;
+
+                      return (
+                        <React.Fragment key={pageNumber}>
+                          {showEllipsis && (
+                            <span className="px-1 text-stone-400 font-mono text-xs">...</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage(pageNumber)}
+                            className={`w-7 h-7 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+                              validCurrentPage === pageNumber
+                                ? 'bg-stone-900 text-white shadow-2xs'
+                                : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-100'
+                            }`}
+                          >
+                            {pageNumber}
+                          </button>
+                        </React.Fragment>
+                      );
+                    })}
+                </div>
+
+                {/* Next Page */}
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={validCurrentPage === totalPages}
+                  className="p-1.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed text-stone-700 transition-colors cursor-pointer"
+                  title="Próxima página"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+
+                {/* Last Page */}
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={validCurrentPage === totalPages}
+                  className="p-1.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed text-stone-700 transition-colors cursor-pointer"
+                  title="Última página"
+                >
+                  <ChevronsRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Modal Footer */}
         <div className="p-4 bg-stone-50 border-t border-stone-200 flex items-center justify-between">

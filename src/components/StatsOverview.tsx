@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Player } from '../types/chess';
+import { Player, Tournament } from '../types/chess';
 import { calculateAge } from '../lib/exportUtils';
 import { AgeGroupPlayersModal } from './AgeGroupPlayersModal';
 import { 
@@ -9,15 +9,20 @@ import {
   MapPin, 
   TrendingUp, 
   Calendar, 
-  Sparkles,
-  ArrowUpRight,
-  Eye
+  Sparkles, 
+  ArrowUpRight, 
+  Eye,
+  Trophy,
+  Medal,
+  Star
 } from 'lucide-react';
 
 interface StatsOverviewProps {
   players: Player[];
+  tournaments?: Tournament[];
   onSelectFilter?: (type: 'gender' | 'title' | 'state', value: string) => void;
   onNavigateToPlayers: () => void;
+  onNavigateToTournaments?: () => void;
 }
 
 type SpotlightCategory = 'TODOS' | 'SUB10' | 'SUB14' | 'SUB20';
@@ -28,8 +33,10 @@ const getFideStandardRating = (p: Player): number => {
 
 export const StatsOverview: React.FC<StatsOverviewProps> = ({
   players,
+  tournaments = [],
   onSelectFilter,
   onNavigateToPlayers,
+  onNavigateToTournaments,
 }) => {
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<{
     id: string;
@@ -69,6 +76,86 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
   const hasAnyFideStandardPlayers = useMemo(() => {
     return players.some((p) => getFideStandardRating(p) > 0);
   }, [players]);
+
+  // Compute players with most participations in tournaments with status 'Finalizado'
+  const mostActivePlayers = useMemo(() => {
+    const finishedTournaments = (tournaments || []).filter(
+      (t) => t.status === 'Finalizado'
+    );
+
+    if (finishedTournaments.length === 0 || players.length === 0) {
+      return [];
+    }
+
+    // Map to count each player's distinct finished tournaments
+    const participationMap = new Map<
+      string,
+      { player: Player; count: number; tournamentNames: string[] }
+    >();
+
+    players.forEach((p) => {
+      const key = p.id || p.fideId || p.name;
+      participationMap.set(key, { player: p, count: 0, tournamentNames: [] });
+    });
+
+    finishedTournaments.forEach((tourn) => {
+      const participantKeysInTourn = new Set<string>();
+
+      // 1. From standings
+      if (tourn.standings && tourn.standings.length > 0) {
+        tourn.standings.forEach((st) => {
+          const matched = players.find(
+            (p) =>
+              (p.id && p.id === st.playerId) ||
+              (p.fideId && st.fideId && p.fideId === st.fideId) ||
+              (p.cbxId && st.cbxId && p.cbxId === st.cbxId) ||
+              (p.name.trim().toLowerCase() === st.playerName.trim().toLowerCase())
+          );
+          if (matched) {
+            participantKeysInTourn.add(matched.id || matched.fideId || matched.name);
+          }
+        });
+      }
+
+      // 2. From participants array
+      if (tourn.participants && tourn.participants.length > 0) {
+        tourn.participants.forEach((partId) => {
+          const matched = players.find(
+            (p) =>
+              (p.id && p.id === partId) ||
+              (p.fideId && p.fideId === partId) ||
+              (p.cbxId && p.cbxId === partId) ||
+              (p.name.trim().toLowerCase() === partId.trim().toLowerCase())
+          );
+          if (matched) {
+            participantKeysInTourn.add(matched.id || matched.fideId || matched.name);
+          }
+        });
+      }
+
+      participantKeysInTourn.forEach((pKey) => {
+        const item = participationMap.get(pKey);
+        if (item) {
+          item.count += 1;
+          item.tournamentNames.push(tourn.name);
+        }
+      });
+    });
+
+    return Array.from(participationMap.values())
+      .filter((item) => item.count > 0)
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        const rA = a.player.ratingFideStandard ?? a.player.ratingFide ?? 0;
+        const rB = b.player.ratingFideStandard ?? b.player.ratingFide ?? 0;
+        return rB - rA;
+      })
+      .slice(0, 5);
+  }, [players, tournaments]);
+
+  const totalFinishedTournaments = useMemo(() => {
+    return (tournaments || []).filter((t) => t.status === 'Finalizado').length;
+  }, [tournaments]);
 
   const stats = useMemo(() => {
     const total = players.length;
@@ -315,6 +402,329 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
         </div>
       </div>
 
+      {/* Top Rated Players Spotlight */}
+      {hasAnyFideStandardPlayers && (
+        <div className="bg-white rounded-2xl p-6 border border-stone-200 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <h2 className="text-base sm:text-lg font-bold text-stone-900 font-sans">
+                  Destaques por Rating FIDE
+                </h2>
+              </div>
+              <p className="text-xs text-stone-600 mt-0.5">
+                Top 5 maiores pontuações Elo Standard (Clássico / Pensado) oficiais
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Category tags: TODOS, SUB10, SUB14, SUB20 */}
+              <div className="inline-flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200/80">
+                {(['TODOS', 'SUB10', 'SUB14', 'SUB20'] as const).map((cat) => {
+                  const isActive = spotlightCategory === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSpotlightCategory(cat)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-stone-900 text-white shadow-2xs'
+                          : 'text-stone-600 hover:text-stone-950 hover:bg-stone-200/70'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={onNavigateToPlayers}
+                className="text-xs font-semibold text-stone-700 hover:text-stone-950 hover:underline inline-flex items-center gap-1 ml-auto sm:ml-0"
+              >
+                Ver todos <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {spotlightPlayers.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+              {spotlightPlayers.map((player, idx) => {
+                const stdRating = getFideStandardRating(player);
+                const age = player.birthDate ? calculateAge(player.birthDate) : null;
+                const fideUrl = player.fideUrl || (player.fideId ? `https://ratings.fide.com/profile/${player.fideId}` : undefined);
+
+                return (
+                  <div
+                    key={player.id || idx}
+                    className="p-4 rounded-xl border border-stone-200/90 bg-stone-50/60 hover:bg-white hover:border-stone-300 transition-all flex flex-col justify-between shadow-2xs group"
+                  >
+                    <div>
+                      {/* Top bar in card: Rank badge + State/FIDE Icon */}
+                      <div className="flex items-center justify-between mb-2.5">
+                        <span
+                          className={`text-[10px] font-mono font-black px-2 py-0.5 rounded shadow-2xs ${
+                            idx === 0
+                              ? 'bg-amber-400 text-stone-950 border border-amber-500'
+                              : idx === 1
+                              ? 'bg-stone-300 text-stone-900 border border-stone-400'
+                              : idx === 2
+                              ? 'bg-amber-700 text-amber-50 border border-amber-800'
+                              : 'bg-stone-900 text-stone-100'
+                          }`}
+                        >
+                          #{idx + 1}
+                        </span>
+
+                        <div className="flex items-center gap-2">
+                          {player.state && (
+                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-stone-200/80 text-stone-700">
+                              {player.state.toUpperCase()}
+                            </span>
+                          )}
+
+                          {fideUrl && (
+                            <a
+                              href={fideUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={`Abrir perfil FIDE oficial de ${player.name} (${player.fideId || ''})`}
+                              className="inline-flex items-center hover:scale-110 transition-transform cursor-pointer"
+                            >
+                              <img
+                                src="https://www.fide.com/img/logo1.png"
+                                alt="FIDE"
+                                width="20"
+                                height="20"
+                                className="inline-block"
+                              />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Name */}
+                      <h3
+                        className={`font-bold text-sm line-clamp-1 mb-1 ${
+                          player.gender === 'F' ? 'text-pink-700' : 'text-stone-900'
+                        }`}
+                        title={player.name}
+                      >
+                        {player.name}
+                      </h3>
+
+                      {/* Details: Title & Age */}
+                      <div className="flex items-center gap-1.5 text-xs text-stone-600 flex-wrap min-h-[20px]">
+                        {player.title && player.title !== 'Sem Título' ? (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-black bg-stone-800 text-amber-300">
+                            {player.title}
+                          </span>
+                        ) : null}
+                        {age !== null ? (
+                          <span className="text-[11px] font-mono text-stone-500 font-medium">
+                            {age} {age === 1 ? 'ano' : 'anos'}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* Footer: Rating FIDE Standard */}
+                    <div className="mt-3.5 pt-2.5 border-t border-stone-200/90 flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-tight">
+                          FIDE Standard
+                        </span>
+                        <span className="text-[9px] text-emerald-700 font-semibold">
+                          Clássico
+                        </span>
+                      </div>
+                      <span className="inline-flex items-center justify-center min-w-[46px] px-2 py-0.5 rounded text-xs font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
+                        {stdRating}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-10 px-4 text-center rounded-xl bg-stone-50/70 border border-dashed border-stone-200">
+              <p className="text-sm font-semibold text-stone-700">
+                Nenhum atleta na categoria <span className="font-mono font-bold">{spotlightCategory}</span> com rating FIDE Standard cadastrado.
+              </p>
+              <p className="text-xs text-stone-500 mt-1">
+                Cadastre novos atletas com data de nascimento ou atualize os ratings através do arquivo oficial da FIDE.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Ranking de Participação em Torneios Finalizados */}
+      <div className="bg-white rounded-2xl p-6 border border-stone-200 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700">
+                <Trophy className="w-4 h-4" />
+              </div>
+              <h2 className="text-base sm:text-lg font-bold text-stone-900 font-sans">
+                Jogadores com Mais Participações em Torneios
+              </h2>
+            </div>
+            <p className="text-xs text-stone-600 mt-1">
+              Top 5 enxadristas mais assíduos considerando exclusivamente competições com status{' '}
+              <span className="font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                FINALIZADO
+              </span>{' '}
+              ({totalFinishedTournaments} {totalFinishedTournaments === 1 ? 'torneio concluído' : 'torneios concluídos'})
+            </p>
+          </div>
+
+          {onNavigateToTournaments && (
+            <button
+              onClick={onNavigateToTournaments}
+              className="text-xs font-semibold text-stone-700 hover:text-stone-950 hover:underline inline-flex items-center gap-1 shrink-0 cursor-pointer"
+            >
+              Ver todos os torneios <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {mostActivePlayers.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            {mostActivePlayers.map((item, idx) => {
+              const player = item.player;
+              const count = item.count;
+
+              // 1º: Ouro 🥇 | 2º: Prata 🥈 | 3º: Bronze 🥉 | 4º: Destaque 🎖️ | 5º: Destaque ⭐
+              const isGold = idx === 0;
+              const isSilver = idx === 1;
+              const isBronze = idx === 2;
+              const isFourth = idx === 3;
+
+              return (
+                <div
+                  key={player.id || idx}
+                  className={`p-4 rounded-2xl border transition-all flex flex-col justify-between shadow-2xs relative overflow-hidden group ${
+                    isGold
+                      ? 'bg-gradient-to-b from-amber-50/90 to-amber-100/40 border-amber-300 hover:border-amber-400 hover:shadow-md'
+                      : isSilver
+                      ? 'bg-gradient-to-b from-slate-50 to-stone-100/80 border-slate-300 hover:border-slate-400 hover:shadow-md'
+                      : isBronze
+                      ? 'bg-gradient-to-b from-orange-50/70 to-amber-100/30 border-amber-600/40 hover:border-amber-600/60 hover:shadow-md'
+                      : isFourth
+                      ? 'bg-gradient-to-b from-indigo-50/40 to-white border-indigo-200/90 hover:border-indigo-300 hover:shadow-md'
+                      : 'bg-gradient-to-b from-emerald-50/40 to-white border-emerald-200/90 hover:border-emerald-300 hover:shadow-md'
+                  }`}
+                >
+                  <div className="flex flex-col h-full justify-between">
+                    <div>
+                      {/* Top Badge: Medal / Highlight label */}
+                      <div className="flex items-center justify-between mb-3">
+                        {isGold ? (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400 text-stone-950 font-black text-xs shadow-xs border border-amber-500">
+                            <span className="text-sm">🥇</span>
+                            <span>1º Lugar • Ouro</span>
+                          </div>
+                        ) : isSilver ? (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-300 text-slate-950 font-black text-xs shadow-xs border border-slate-400">
+                            <span className="text-sm">🥈</span>
+                            <span>2º Lugar • Prata</span>
+                          </div>
+                        ) : isBronze ? (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-700 text-amber-50 font-black text-xs shadow-xs border border-amber-800">
+                            <span className="text-sm">🥉</span>
+                            <span>3º Lugar • Bronze</span>
+                          </div>
+                        ) : isFourth ? (
+                          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-900 text-indigo-100 font-bold text-xs shadow-xs border border-indigo-950">
+                            <span className="text-xs">🎖️</span>
+                            <span>4º Lugar • Destaque</span>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 text-emerald-300 font-bold text-xs shadow-xs border border-stone-950">
+                            <span className="text-xs">⭐</span>
+                            <span>5º Lugar • Destaque</span>
+                          </div>
+                        )}
+
+                        {player.state && (
+                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/80 border border-stone-200/70 text-stone-700">
+                            {player.state.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* 1. Nome do Jogador */}
+                      <h3
+                        className={`font-bold text-sm line-clamp-1 mb-1 ${
+                          player.gender === 'F' ? 'text-pink-700' : 'text-stone-900'
+                        }`}
+                        title={player.name}
+                      >
+                        {player.name}
+                      </h3>
+
+                      {/* 2. Titulação do Jogador */}
+                      <div className="flex items-center gap-1.5 text-xs text-stone-600 flex-wrap min-h-[20px] mb-3">
+                        {player.title && player.title !== 'Sem Título' ? (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-black bg-stone-800 text-amber-300">
+                            {player.title}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-stone-400 font-medium">Sem título</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 3. Número de Torneios Jogados (ABAIXO do nome e titulação) */}
+                    <div className="p-2.5 rounded-xl bg-white/95 border border-stone-200/80 shadow-2xs mt-auto">
+                      <div className="text-[10px] uppercase font-semibold text-stone-500 tracking-wider">
+                        Torneios Jogados
+                      </div>
+                      <div className="flex items-baseline gap-1.5 mt-0.5">
+                        <span
+                          className={`text-2xl font-extrabold font-mono ${
+                            isGold
+                              ? 'text-amber-900'
+                              : isSilver
+                              ? 'text-slate-900'
+                              : isBronze
+                              ? 'text-amber-800'
+                              : isFourth
+                              ? 'text-indigo-950'
+                              : 'text-emerald-950'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                        <span className="text-xs font-semibold text-stone-600">
+                          {count === 1 ? 'finalizado' : 'finalizados'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="py-10 px-4 text-center rounded-xl bg-stone-50/70 border border-dashed border-stone-200">
+            <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-2">
+              <Trophy className="w-5 h-5" />
+            </div>
+            <p className="text-sm font-semibold text-stone-700">
+              Nenhum torneio com status "Finalizado" com participantes computados ainda.
+            </p>
+            <p className="text-xs text-stone-500 mt-1 max-w-md mx-auto">
+              Ao cadastrar e concluir torneios na aba <b>Torneios</b> (marcando como Finalizado), o ranking dos enxadristas mais assíduos será exibido aqui.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* Main Charts & Breakdown Section */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
@@ -513,165 +923,6 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
         </div>
 
       </div>
-
-      {/* Top Rated Players Spotlight */}
-      {hasAnyFideStandardPlayers && (
-        <div className="bg-white rounded-2xl p-6 border border-stone-200 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <h2 className="text-base sm:text-lg font-bold text-stone-900 font-sans">
-                  Destaques por Rating FIDE
-                </h2>
-              </div>
-              <p className="text-xs text-stone-600 mt-0.5">
-                Top 5 maiores pontuações Elo Standard (Clássico / Pensado) oficiais
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Category tags: TODOS, SUB10, SUB14, SUB20 */}
-              <div className="inline-flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200/80">
-                {(['TODOS', 'SUB10', 'SUB14', 'SUB20'] as const).map((cat) => {
-                  const isActive = spotlightCategory === cat;
-                  return (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setSpotlightCategory(cat)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
-                        isActive
-                          ? 'bg-stone-900 text-white shadow-2xs'
-                          : 'text-stone-600 hover:text-stone-950 hover:bg-stone-200/70'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <button
-                onClick={onNavigateToPlayers}
-                className="text-xs font-semibold text-stone-700 hover:text-stone-950 hover:underline inline-flex items-center gap-1 ml-auto sm:ml-0"
-              >
-                Ver todos <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-
-          {spotlightPlayers.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
-              {spotlightPlayers.map((player, idx) => {
-                const stdRating = getFideStandardRating(player);
-                const age = player.birthDate ? calculateAge(player.birthDate) : null;
-                const fideUrl = player.fideUrl || (player.fideId ? `https://ratings.fide.com/profile/${player.fideId}` : undefined);
-
-                return (
-                  <div
-                    key={player.id || idx}
-                    className="p-4 rounded-xl border border-stone-200/90 bg-stone-50/60 hover:bg-white hover:border-stone-300 transition-all flex flex-col justify-between shadow-2xs group"
-                  >
-                    <div>
-                      {/* Top bar in card: Rank badge + State/FIDE Icon */}
-                      <div className="flex items-center justify-between mb-2.5">
-                        <span
-                          className={`text-[10px] font-mono font-black px-2 py-0.5 rounded shadow-2xs ${
-                            idx === 0
-                              ? 'bg-amber-400 text-stone-950 border border-amber-500'
-                              : idx === 1
-                              ? 'bg-stone-300 text-stone-900 border border-stone-400'
-                              : idx === 2
-                              ? 'bg-amber-700 text-amber-50 border border-amber-800'
-                              : 'bg-stone-900 text-stone-100'
-                          }`}
-                        >
-                          #{idx + 1}
-                        </span>
-
-                        <div className="flex items-center gap-2">
-                          {player.state && (
-                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-stone-200/80 text-stone-700">
-                              {player.state.toUpperCase()}
-                            </span>
-                          )}
-
-                          {fideUrl && (
-                            <a
-                              href={fideUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={`Abrir perfil FIDE oficial de ${player.name} (${player.fideId || ''})`}
-                              className="inline-flex items-center hover:scale-110 transition-transform cursor-pointer"
-                            >
-                              <img
-                                src="https://www.fide.com/img/logo1.png"
-                                alt="FIDE"
-                                width="20"
-                                height="20"
-                                className="inline-block"
-                              />
-                            </a>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Name */}
-                      <h3
-                        className={`font-bold text-sm line-clamp-1 mb-1 ${
-                          player.gender === 'F' ? 'text-pink-700' : 'text-stone-900'
-                        }`}
-                        title={player.name}
-                      >
-                        {player.name}
-                      </h3>
-
-                      {/* Details: Title & Age */}
-                      <div className="flex items-center gap-1.5 text-xs text-stone-600 flex-wrap min-h-[20px]">
-                        {player.title && player.title !== 'Sem Título' ? (
-                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-black bg-stone-800 text-amber-300">
-                            {player.title}
-                          </span>
-                        ) : null}
-                        {age !== null ? (
-                          <span className="text-[11px] font-mono text-stone-500 font-medium">
-                            {age} {age === 1 ? 'ano' : 'anos'}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {/* Footer: Rating FIDE Standard */}
-                    <div className="mt-3.5 pt-2.5 border-t border-stone-200/90 flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-tight">
-                          FIDE Standard
-                        </span>
-                        <span className="text-[9px] text-emerald-700 font-semibold">
-                          Clássico
-                        </span>
-                      </div>
-                      <span className="inline-flex items-center justify-center min-w-[46px] px-2 py-0.5 rounded text-xs font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
-                        {stdRating}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="py-10 px-4 text-center rounded-xl bg-stone-50/70 border border-dashed border-stone-200">
-              <p className="text-sm font-semibold text-stone-700">
-                Nenhum atleta na categoria <span className="font-mono font-bold">{spotlightCategory}</span> com rating FIDE Standard cadastrado.
-              </p>
-              <p className="text-xs text-stone-500 mt-1">
-                Cadastre novos atletas com data de nascimento ou atualize os ratings através do arquivo oficial da FIDE.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Age Group Athletes Modal */}
       {selectedAgeGroup && (
