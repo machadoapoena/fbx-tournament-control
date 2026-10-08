@@ -43,27 +43,17 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => setActiveTab('dashboard')}
             className="flex items-center gap-3 cursor-pointer group select-none"
           >
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-stone-900 flex items-center justify-center text-white shadow-sm transition-transform group-hover:scale-105">
-              {/* Chess Knight SVG */}
-              <svg 
-                className="w-6 h-6 fill-current" 
-                viewBox="0 0 24 24" 
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path d="M19 22H5V20H19V22M17.16 8.27C17.07 8.04 16.92 7.84 16.71 7.71C16.5 7.57 16.26 7.5 16 7.5H15.5C15.22 7.5 15 7.28 15 7C15 5.9 14.1 5 13 5C12.38 5 11.83 5.28 11.47 5.72L9.41 7.78C9.15 8.04 9 8.39 9 8.76V10.5C9 10.78 8.78 11 8.5 11C8.22 11 8 10.78 8 10.5V7C8 6.45 7.55 6 7 6S6 6.45 6 7V11.23C4.81 12.08 4 13.43 4 15V19H20V15C20 12.33 18.84 9.94 17.16 8.27Z"/>
-              </svg>
+            <div>
+              <img src="https://i0.wp.com/fbx.org.br/wp-content/uploads/2022/05/Logo-FBX-1.png?resize=512%2C512" width="40px"/>
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-lg sm:text-xl tracking-tight text-stone-900 font-sans">
-                  ChessRegistry
-                </span>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-200">
-                  FBX / FIDE
+                  FBX - Gestão Torneios
                 </span>
               </div>
               <p className="text-xs text-stone-700 hidden sm:block">
-                Cadastro Nacional de Jogadores & Torneios
+                Cadastro Brasiliense de Jogadores & Torneios
               </p>
             </div>
           </div>

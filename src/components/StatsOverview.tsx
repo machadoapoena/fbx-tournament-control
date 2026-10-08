@@ -20,6 +20,12 @@ interface StatsOverviewProps {
   onNavigateToPlayers: () => void;
 }
 
+type SpotlightCategory = 'TODOS' | 'SUB10' | 'SUB14' | 'SUB20';
+
+const getFideStandardRating = (p: Player): number => {
+  return p.ratingFideStandard ?? p.ratingFide ?? 0;
+};
+
 export const StatsOverview: React.FC<StatsOverviewProps> = ({
   players,
   onSelectFilter,
@@ -31,6 +37,38 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
     desc: string;
     players: Player[];
   } | null>(null);
+
+  const [spotlightCategory, setSpotlightCategory] = useState<SpotlightCategory>('TODOS');
+
+  const spotlightPlayers = useMemo(() => {
+    return [...players]
+      .filter((p) => {
+        const rating = getFideStandardRating(p);
+        if (rating <= 0) return false;
+
+        if (spotlightCategory === 'TODOS') return true;
+
+        if (!p.birthDate) return false;
+        const age = calculateAge(p.birthDate);
+
+        if (spotlightCategory === 'SUB10') {
+          return age <= 10;
+        }
+        if (spotlightCategory === 'SUB14') {
+          return age <= 14;
+        }
+        if (spotlightCategory === 'SUB20') {
+          return age <= 20;
+        }
+        return true;
+      })
+      .sort((a, b) => getFideStandardRating(b) - getFideStandardRating(a))
+      .slice(0, 5);
+  }, [players, spotlightCategory]);
+
+  const hasAnyFideStandardPlayers = useMemo(() => {
+    return players.some((p) => getFideStandardRating(p) > 0);
+  }, [players]);
 
   const stats = useMemo(() => {
     const total = players.length;
@@ -159,33 +197,29 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
     <div className="space-y-8">
       {/* Hero Banner / Summary */}
       <div className="relative overflow-hidden bg-stone-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl">
-        <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-10 pointer-events-none hidden md:flex items-center justify-center">
-          <svg className="w-96 h-96 fill-white" viewBox="0 0 24 24">
-            <path d="M19 22H5V20H19V22M17.16 8.27C17.07 8.04 16.92 7.84 16.71 7.71C16.5 7.57 16.26 7.5 16 7.5H15.5C15.22 7.5 15 7.28 15 7C15 5.9 14.1 5 13 5C12.38 5 11.83 5.28 11.47 5.72L9.41 7.78C9.15 8.04 9 8.39 9 8.76V10.5C9 10.78 8.78 11 8.5 11C8.22 11 8 10.78 8 10.5V7C8 6.45 7.55 6 7 6S6 6.45 6 7V11.23C4.81 12.08 4 13.43 4 15V19H20V15C20 12.33 18.84 9.94 17.16 8.27Z"/>
-          </svg>
-        </div>
-
-        <div className="relative z-10 max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-stone-800 text-stone-300 text-xs font-semibold mb-4 border border-stone-700">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            Estatísticas & Censo Oficial de Enxadristas
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-stone-800 text-stone-300 text-xs font-semibold mb-3 border border-stone-700">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              Estatísticas & Censo Oficial de Enxadristas
+            </div>
+            <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-white mb-2 font-sans">
+              Registro Oficial de Enxadristas
+            </h1>
+            <p className="text-stone-300 text-sm sm:text-base leading-relaxed">
+              Monitore a base de atletas federados, distribuição demográfica, faixas etárias, mestres internacionais e exporte listagens compatíveis com o <b>Swiss-Manager</b>.
+            </p>
           </div>
-          <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-white mb-2 font-sans">
-            Registro Oficial de Enxadristas
-          </h1>
-          <p className="text-stone-300 text-sm sm:text-base leading-relaxed mb-6">
-            Monitore a base de atletas federados, distribuição demográfica, faixas etárias, mestres internacionais e exporte listagens compatíveis com o <b>Swiss-Manager</b>.
-          </p>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col sm:flex-row md:flex-col items-start md:items-end gap-3 shrink-0">
             <button
               onClick={onNavigateToPlayers}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-stone-900 rounded-xl font-bold text-xs sm:text-sm hover:bg-stone-100 transition-colors shadow-sm"
+              className="inline-flex items-center gap-2 px-5 py-3 bg-white text-stone-900 rounded-xl font-bold text-sm hover:bg-stone-100 transition-all shadow-md hover:shadow-lg hover:scale-102 cursor-pointer"
             >
               Consultar Todos os Jogadores
               <ArrowUpRight className="w-4 h-4" />
             </button>
-            <div className="text-xs text-stone-400 flex items-center gap-1.5 px-2">
+            <div className="text-xs text-stone-400 flex items-center gap-1.5 px-1">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               Base de Dados Firebase Sincronizada
             </div>
@@ -481,53 +515,161 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
       </div>
 
       {/* Top Rated Players Spotlight */}
-      {stats.topFidePlayers.length > 0 && (
+      {hasAnyFideStandardPlayers && (
         <div className="bg-white rounded-2xl p-6 border border-stone-200 shadow-xs">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
             <div>
-              <h2 className="text-base font-bold text-stone-900">Destaques por Rating FIDE</h2>
-              <p className="text-xs text-stone-700">Maiores pontuações Elo registradas no sistema</p>
-            </div>
-            <button
-              onClick={onNavigateToPlayers}
-              className="text-xs font-semibold text-stone-900 hover:underline inline-flex items-center gap-1"
-            >
-              Ver todos <ArrowUpRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            {stats.topFidePlayers.map((player, idx) => (
-              <div
-                key={player.id || idx}
-                className="p-4 rounded-xl border border-stone-200 bg-stone-50/50 hover:bg-white hover:border-stone-300 transition-all flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-stone-900 text-white">
-                      #{idx + 1}
-                    </span>
-                    <span className="text-xs font-bold text-stone-700">
-                      {player.state || 'BRA'}
-                    </span>
-                  </div>
-                  <div className={`font-bold text-sm line-clamp-1 ${player.gender === 'F' ? 'text-pink-600' : 'text-stone-900'}`}>
-                    {player.name}
-                  </div>
-                  <div className="text-xs text-stone-700 font-medium">
-                    {player.title || 'Sem Título'}
-                  </div>
-                </div>
-
-                <div className="mt-3 pt-2 border-t border-stone-200 flex items-center justify-between">
-                  <span className="text-[11px] text-stone-700 font-medium">Rating FIDE</span>
-                  <span className="font-mono font-extrabold text-sm text-stone-900">
-                    {player.ratingFide}
-                  </span>
-                </div>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <h2 className="text-base sm:text-lg font-bold text-stone-900 font-sans">
+                  Destaques por Rating FIDE
+                </h2>
               </div>
-            ))}
+              <p className="text-xs text-stone-600 mt-0.5">
+                Top 5 maiores pontuações Elo Standard (Clássico / Pensado) oficiais
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Category tags: TODOS, SUB10, SUB14, SUB20 */}
+              <div className="inline-flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200/80">
+                {(['TODOS', 'SUB10', 'SUB14', 'SUB20'] as const).map((cat) => {
+                  const isActive = spotlightCategory === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSpotlightCategory(cat)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-stone-900 text-white shadow-2xs'
+                          : 'text-stone-600 hover:text-stone-950 hover:bg-stone-200/70'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={onNavigateToPlayers}
+                className="text-xs font-semibold text-stone-700 hover:text-stone-950 hover:underline inline-flex items-center gap-1 ml-auto sm:ml-0"
+              >
+                Ver todos <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
+
+          {spotlightPlayers.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+              {spotlightPlayers.map((player, idx) => {
+                const stdRating = getFideStandardRating(player);
+                const age = player.birthDate ? calculateAge(player.birthDate) : null;
+                const fideUrl = player.fideUrl || (player.fideId ? `https://ratings.fide.com/profile/${player.fideId}` : undefined);
+
+                return (
+                  <div
+                    key={player.id || idx}
+                    className="p-4 rounded-xl border border-stone-200/90 bg-stone-50/60 hover:bg-white hover:border-stone-300 transition-all flex flex-col justify-between shadow-2xs group"
+                  >
+                    <div>
+                      {/* Top bar in card: Rank badge + State/FIDE Icon */}
+                      <div className="flex items-center justify-between mb-2.5">
+                        <span
+                          className={`text-[10px] font-mono font-black px-2 py-0.5 rounded shadow-2xs ${
+                            idx === 0
+                              ? 'bg-amber-400 text-stone-950 border border-amber-500'
+                              : idx === 1
+                              ? 'bg-stone-300 text-stone-900 border border-stone-400'
+                              : idx === 2
+                              ? 'bg-amber-700 text-amber-50 border border-amber-800'
+                              : 'bg-stone-900 text-stone-100'
+                          }`}
+                        >
+                          #{idx + 1}
+                        </span>
+
+                        <div className="flex items-center gap-2">
+                          {player.state && (
+                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-stone-200/80 text-stone-700">
+                              {player.state.toUpperCase()}
+                            </span>
+                          )}
+
+                          {fideUrl && (
+                            <a
+                              href={fideUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={`Abrir perfil FIDE oficial de ${player.name} (${player.fideId || ''})`}
+                              className="inline-flex items-center hover:scale-110 transition-transform cursor-pointer"
+                            >
+                              <img
+                                src="https://www.fide.com/img/logo1.png"
+                                alt="FIDE"
+                                width="20"
+                                height="20"
+                                className="inline-block"
+                              />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Name */}
+                      <h3
+                        className={`font-bold text-sm line-clamp-1 mb-1 ${
+                          player.gender === 'F' ? 'text-pink-700' : 'text-stone-900'
+                        }`}
+                        title={player.name}
+                      >
+                        {player.name}
+                      </h3>
+
+                      {/* Details: Title & Age */}
+                      <div className="flex items-center gap-1.5 text-xs text-stone-600 flex-wrap min-h-[20px]">
+                        {player.title && player.title !== 'Sem Título' ? (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-black bg-stone-800 text-amber-300">
+                            {player.title}
+                          </span>
+                        ) : null}
+                        {age !== null ? (
+                          <span className="text-[11px] font-mono text-stone-500 font-medium">
+                            {age} {age === 1 ? 'ano' : 'anos'}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* Footer: Rating FIDE Standard */}
+                    <div className="mt-3.5 pt-2.5 border-t border-stone-200/90 flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-tight">
+                          FIDE Standard
+                        </span>
+                        <span className="text-[9px] text-emerald-700 font-semibold">
+                          Clássico
+                        </span>
+                      </div>
+                      <span className="inline-flex items-center justify-center min-w-[46px] px-2 py-0.5 rounded text-xs font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
+                        {stdRating}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-10 px-4 text-center rounded-xl bg-stone-50/70 border border-dashed border-stone-200">
+              <p className="text-sm font-semibold text-stone-700">
+                Nenhum atleta na categoria <span className="font-mono font-bold">{spotlightCategory}</span> com rating FIDE Standard cadastrado.
+              </p>
+              <p className="text-xs text-stone-500 mt-1">
+                Cadastre novos atletas com data de nascimento ou atualize os ratings através do arquivo oficial da FIDE.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
