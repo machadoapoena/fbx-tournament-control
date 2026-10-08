@@ -253,10 +253,9 @@ export const AgeGroupPlayersModal: React.FC<AgeGroupPlayersModalProps> = ({
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title={`Abrir perfil FIDE oficial de ${player.name} (${player.fideId || ''})`}
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-sky-950 hover:bg-sky-800 text-amber-300 border border-sky-800 hover:border-amber-400/60 shadow-2xs transition-all hover:scale-110 cursor-pointer group"
                               >
-                                <span className="text-[9px] font-mono font-black tracking-tighter leading-none text-amber-300">
-                                  FIDE
+                                <span>
+                                  <img src="https://www.fide.com/img/logo1.png" width="23px"/>
                                 </span>
                               </a>
                             ) : null}
@@ -267,10 +266,9 @@ export const AgeGroupPlayersModal: React.FC<AgeGroupPlayersModalProps> = ({
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title={`Abrir perfil CBX oficial de ${player.name} (${player.cbxId || ''})`}
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-950 hover:bg-emerald-800 text-yellow-300 border border-emerald-800 hover:border-yellow-400/60 shadow-2xs transition-all hover:scale-110 cursor-pointer group"
                               >
-                                <span className="text-[9px] font-mono font-black tracking-tighter leading-none text-yellow-300">
-                                  CBX
+                                <span>
+                                  <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="23px"/>
                                 </span>
                               </a>
                             ) : null}
