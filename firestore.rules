@@ -1,0 +1,40 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidPlayer(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 150
+        && data.title is string && data.title.size() <= 20
+        && data.birthDate is string && data.birthDate.size() <= 15
+        && data.gender is string && (data.gender == 'M' || data.gender == 'F' || data.gender == 'Outro')
+        && data.country is string && data.country.size() <= 60
+        && data.state is string && data.state.size() <= 30;
+    }
+
+    function isValidTournament(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 150
+        && data.startDate is string && data.startDate.size() <= 15
+        && data.status is string && data.status.size() <= 30;
+    }
+
+    // Players collection
+    match /players/{playerId} {
+      allow read: if true;
+      allow create, update: if isValidPlayer(request.resource.data);
+      allow delete: if true;
+    }
+
+    // Tournaments collection
+    match /tournaments/{tournamentId} {
+      allow read: if true;
+      allow create, update: if isValidTournament(request.resource.data);
+      allow delete: if true;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

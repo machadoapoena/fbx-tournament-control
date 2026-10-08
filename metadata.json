@@ -1,0 +1,6 @@
+{
+  "name": "ChessRegistry - Cadastro de Jogadores de Xadrez & Torneios",
+  "description": "Sistema moderno e minimalista para cadastro, estatísticas, exportação Swiss-Manager/CSV/PDF e gestão de torneios de xadrez com integração Firebase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
