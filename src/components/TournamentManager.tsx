@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
-import { Tournament, TournamentStanding, Player } from '../types/chess';
-import { exportTournamentStandingsToPDF } from '../lib/exportUtils';
+import { Tournament, TournamentStanding, Player, SwissExportConfig } from '../types/chess';
+import { 
+  exportTournamentStandingsToPDF, 
+  exportToSwissManagerExcel,
+  exportToSwissManagerXML 
+} from '../lib/exportUtils';
 import { 
   Swords, 
   Plus, 
@@ -10,6 +14,8 @@ import {
   Users, 
   Trophy, 
   FileText, 
+  FileSpreadsheet,
+  FileCode,
   Edit, 
   Trash2, 
   CheckCircle2, 
@@ -24,7 +30,10 @@ import {
   AlertCircle,
   Loader2,
   Zap,
-  Timer
+  Timer,
+  Search,
+  Check,
+  UserMinus
 } from 'lucide-react';
 
 interface TournamentManagerProps {
@@ -49,6 +58,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(
     tournaments.length > 0 ? tournaments[0] : null
   );
+
+  const activeTournament = selectedTournament || (tournaments.length > 0 ? tournaments[0] : null);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -75,8 +86,13 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     standings: [],
   });
 
-  // Selected participant IDs for association
-  const [selectedParticipantIds, setSelectedParticipantIds] = useState<Set<string>>(new Set());
+  // Participant search & instant add state
+  const [playerSearchTerm, setPlayerSearchTerm] = useState('');
+  const [isAddingPlayerId, setIsAddingPlayerId] = useState<string | null>(null);
+
+  // Player removal confirmation state
+  const [playerToRemove, setPlayerToRemove] = useState<TournamentStanding | null>(null);
+  const [isRemovingPlayer, setIsRemovingPlayer] = useState(false);
 
   // Standings editor state
   const [editingStandings, setEditingStandings] = useState<TournamentStanding[]>([]);
@@ -145,44 +161,87 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     setIsEditModalOpen(false);
   };
 
+  const searchedPlayers = React.useMemo(() => {
+    const term = playerSearchTerm.trim().toLowerCase();
+    if (!term) return [];
+    return players.filter((p) => p.name.toLowerCase().includes(term));
+  }, [players, playerSearchTerm]);
+
   const handleOpenParticipantsModal = () => {
-    if (!selectedTournament) return;
-    setSelectedParticipantIds(new Set(selectedTournament.participants || []));
+    if (!activeTournament) return;
+    setPlayerSearchTerm('');
     setIsAddParticipantsModalOpen(true);
   };
 
-  const handleSaveParticipants = async () => {
-    if (!selectedTournament?.id) return;
-    const newParticipantIds = Array.from(selectedParticipantIds);
+  const handleInstantAddPlayer = async (player: Player) => {
+    if (!activeTournament?.id) return;
+    const pId = player.id || player.fideId || player.name;
 
-    // Initialize standings for newly added players if not exists
-    const currentStandings = selectedTournament.standings || [];
-    const standingMap = new Map(currentStandings.map((s) => [s.playerId, s]));
+    // Verify if already registered
+    const isAlreadyRegistered =
+      (activeTournament.participants || []).includes(pId) ||
+      (activeTournament.standings || []).some(
+        (s) => s.playerId === pId || s.playerName === player.name || (player.fideId && s.fideId === player.fideId)
+      );
 
-    const updatedStandings: TournamentStanding[] = newParticipantIds.map((pId, idx) => {
-      if (standingMap.has(pId)) {
-        return standingMap.get(pId)!;
-      }
-      const p = players.find((pl) => (pl.id || pl.fideId || pl.name) === pId);
-      return {
+    if (isAlreadyRegistered) return;
+
+    setIsAddingPlayerId(pId);
+    try {
+      const currentStandings = activeTournament.standings || [];
+      const newStanding: TournamentStanding = {
         playerId: pId,
-        playerName: p?.name || 'Jogador',
-        title: p?.title,
-        fideId: p?.fideId,
-        cbxId: p?.cbxId,
+        playerName: player.name,
+        title: player.title,
+        fideId: player.fideId,
+        cbxId: player.cbxId,
         points: 0,
-        rank: idx + 1,
+        rank: currentStandings.length + 1,
         buchholz: 0,
         sonnebornBerger: 0,
         wins: 0,
       };
-    });
 
-    await onUpdateTournament(selectedTournament.id, {
-      participants: newParticipantIds,
-      standings: updatedStandings,
-    });
-    setIsAddParticipantsModalOpen(false);
+      const updatedParticipants = [...(activeTournament.participants || []), pId];
+      const updatedStandings = [...currentStandings, newStanding];
+
+      await onUpdateTournament(activeTournament.id, {
+        participants: updatedParticipants,
+        standings: updatedStandings,
+      });
+    } finally {
+      setIsAddingPlayerId(null);
+    }
+  };
+
+  const handleConfirmRemovePlayer = async () => {
+    if (!activeTournament?.id || !playerToRemove) return;
+    setIsRemovingPlayer(true);
+    try {
+      const targetId = playerToRemove.playerId;
+      const targetName = playerToRemove.playerName;
+      const targetFide = playerToRemove.fideId;
+
+      const remainingParticipants = (activeTournament.participants || []).filter(
+        (id) => id !== targetId && id !== targetName && (!targetFide || id !== targetFide)
+      );
+
+      const remainingStandings = (activeTournament.standings || [])
+        .filter((s) => s.playerId !== targetId && s.playerName !== targetName)
+        .map((s, idx) => ({
+          ...s,
+          rank: s.rank !== undefined ? s.rank : idx + 1,
+        }));
+
+      await onUpdateTournament(activeTournament.id, {
+        participants: remainingParticipants,
+        standings: remainingStandings,
+      });
+
+      setPlayerToRemove(null);
+    } finally {
+      setIsRemovingPlayer(false);
+    }
   };
 
   const handleOpenScoreModal = () => {
@@ -222,6 +281,148 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     }
   };
 
+  const handleExportSwissManager = (t: Tournament) => {
+    const standings = t.standings || [];
+    const participantIds = t.participants || [];
+
+    const exportList: Player[] = [];
+
+    if (standings.length > 0) {
+      standings.forEach((s, idx) => {
+        const matched = players.find(
+          (p) => p.id === s.playerId || p.name === s.playerName || (p.fideId && p.fideId === s.fideId)
+        );
+        exportList.push({
+          id: s.playerId || `p-${idx + 1}`,
+          name: s.playerName,
+          title: (s.title as any) || matched?.title || 'Sem Título',
+          fideId: s.fideId || matched?.fideId,
+          cbxId: s.cbxId || matched?.cbxId,
+          gender: matched?.gender || 'M',
+          birthDate: matched?.birthDate || '',
+          country: matched?.country || 'BRA',
+          state: matched?.state || t.state || '',
+          ratingFideStandard: matched?.ratingFideStandard || matched?.ratingFide || 0,
+          ratingFideRapid: matched?.ratingFideRapid || 0,
+          ratingFideBlitz: matched?.ratingFideBlitz || 0,
+          ratingCbxStandard: matched?.ratingCbxStandard || matched?.ratingCbx || 0,
+          ratingCbxRapid: matched?.ratingCbxRapid || 0,
+          ratingCbxBlitz: matched?.ratingCbxBlitz || 0,
+          club: matched?.club || '',
+        });
+      });
+    } else if (participantIds.length > 0) {
+      participantIds.forEach((pId, idx) => {
+        const matched = players.find((p) => (p.id || p.fideId || p.name) === pId);
+        if (matched) {
+          exportList.push(matched);
+        } else {
+          exportList.push({
+            id: pId,
+            name: pId,
+            title: 'Sem Título',
+            gender: 'M',
+            birthDate: '',
+            country: 'BRA',
+            state: t.state,
+          });
+        }
+      });
+    }
+
+    if (exportList.length === 0) {
+      return;
+    }
+
+    const tType = t.type || 'standard';
+    const config: SwissExportConfig = {
+      delimiter: ';',
+      includeHeader: true,
+      format: 'xlsx',
+      fideRatingModality: tType === 'rapid' ? 'rapid' : tType === 'blitz' ? 'blitz' : 'standard',
+      cbxRatingModality: tType === 'rapid' ? 'rapid' : tType === 'blitz' ? 'blitz' : 'standard',
+      fields: {
+        id: true,
+        fideId: true,
+        cbxId: true,
+        name: true,
+        title: true,
+        gender: true,
+        birthDate: true,
+        country: true,
+        state: true,
+        k: true,
+        club: true,
+      },
+    };
+
+    const safeName = t.name.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 30);
+    exportToSwissManagerExcel(exportList, config, `swiss_manager_${safeName}.xlsx`);
+  };
+
+  const handleExportSwissManagerXML = (t: Tournament) => {
+    const standings = t.standings || [];
+    const participantIds = t.participants || [];
+
+    const exportList: Player[] = [];
+
+    if (standings.length > 0) {
+      standings.forEach((s, idx) => {
+        const matched = players.find(
+          (p) => p.id === s.playerId || p.name === s.playerName || (p.fideId && p.fideId === s.fideId)
+        );
+        exportList.push({
+          id: s.playerId || `p-${idx + 1}`,
+          name: s.playerName,
+          title: (s.title as any) || matched?.title || 'Sem Título',
+          fideId: s.fideId || matched?.fideId,
+          cbxId: s.cbxId || matched?.cbxId,
+          gender: matched?.gender || 'M',
+          birthDate: matched?.birthDate || '',
+          country: matched?.country || 'BRA',
+          state: matched?.state || t.state || '',
+          ratingFideStandard: matched?.ratingFideStandard || matched?.ratingFide || 0,
+          ratingFideRapid: matched?.ratingFideRapid || 0,
+          ratingFideBlitz: matched?.ratingFideBlitz || 0,
+          ratingCbxStandard: matched?.ratingCbxStandard || matched?.ratingCbx || 0,
+          ratingCbxRapid: matched?.ratingCbxRapid || 0,
+          ratingCbxBlitz: matched?.ratingCbxBlitz || 0,
+          club: matched?.club || '',
+        });
+      });
+    } else if (participantIds.length > 0) {
+      participantIds.forEach((pId, idx) => {
+        const matched = players.find((p) => (p.id || p.fideId || p.name) === pId);
+        if (matched) {
+          exportList.push(matched);
+        } else {
+          exportList.push({
+            id: pId,
+            name: pId,
+            title: 'Sem Título',
+            gender: 'M',
+            birthDate: '',
+            country: 'BRA',
+            state: t.state,
+          });
+        }
+      });
+    }
+
+    if (exportList.length === 0) {
+      return;
+    }
+
+    const tType = t.type || 'standard';
+    const config: Partial<SwissExportConfig> = {
+      fideRatingModality: tType === 'rapid' ? 'rapid' : tType === 'blitz' ? 'blitz' : 'standard',
+      cbxRatingModality: tType === 'rapid' ? 'rapid' : tType === 'blitz' ? 'blitz' : 'standard',
+    };
+
+    const safeName = t.name.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 30);
+    exportToSwissManagerXML(exportList, config, `swiss_manager_${safeName}.xml`);
+  };
+
   const getModalityBadge = (type?: string, isSelected?: boolean) => {
     switch (type) {
       case 'blitz':
@@ -254,8 +455,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
         };
     }
   };
-
-  const activeTournament = selectedTournament || (tournaments.length > 0 ? tournaments[0] : null);
 
   return (
     <div className="space-y-6">
@@ -425,11 +624,31 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
 
                     <button
                       onClick={() => exportTournamentStandingsToPDF(activeTournament)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200 rounded-xl text-xs font-semibold transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
                       title="Baixar classificação em PDF"
                     >
                       <FileText className="w-3.5 h-3.5 text-rose-600" />
                       <span>PDF</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleExportSwissManager(activeTournament)}
+                      disabled={(!activeTournament.standings || activeTournament.standings.length === 0) && (!activeTournament.participants || activeTournament.participants.length === 0)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                      title="Exportar jogadores do torneio para planilha Excel (.xlsx) do Swiss-Manager"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Swiss-Manager (Excel)</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleExportSwissManagerXML(activeTournament)}
+                      disabled={(!activeTournament.standings || activeTournament.standings.length === 0) && (!activeTournament.participants || activeTournament.participants.length === 0)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                      title="Exportar jogadores do torneio para arquivo XML do Swiss-Manager (<Players><Player .../></Players>)"
+                    >
+                      <FileCode className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Swiss-Manager (XML)</span>
                     </button>
 
                     {isAdmin && (
@@ -540,12 +759,18 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                             <th className="py-2.5 px-3">Jogador</th>
                             <th className="py-2.5 px-2 text-center">Título</th>
                             <th className="py-2.5 px-3">ID FIDE</th>
+                            <th className="py-2.5 px-3">ID CBX</th>
                             <th className="py-2.5 px-3 text-right font-black">Pts</th>
+                            {isAdmin && <th className="py-2.5 px-3 text-center w-12">Remover</th>}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-stone-100">
                           {activeTournament.standings.map((s, idx) => {
-                            const isFemale = players.find(p => p.id === s.playerId || p.name === s.playerName || (p.fideId && p.fideId === s.fideId))?.gender === 'F';
+                            const matchedPlayer = players.find(p => p.id === s.playerId || p.name === s.playerName || (p.fideId && p.fideId === s.fideId));
+                            const isFemale = matchedPlayer?.gender === 'F';
+                            const fideId = s.fideId || matchedPlayer?.fideId;
+                            const cbxId = s.cbxId || matchedPlayer?.cbxId;
+
                             return (
                             <tr
                               key={s.playerId || idx}
@@ -583,11 +808,52 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                                 )}
                               </td>
                               <td className="py-2.5 px-3 font-mono text-stone-700">
-                                {s.fideId || '-'}
+                                {fideId ? (
+                                  <a
+                                    href={matchedPlayer?.fideUrl || `https://ratings.fide.com/profile/${fideId}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 hover:text-stone-950 font-bold hover:underline"
+                                    title={`Abrir perfil FIDE de ${s.playerName} (${fideId})`}
+                                  >
+                                    <span>{fideId}</span>
+                                    <img src="https://www.fide.com/img/logo1.png" width="16" height="16" alt="FIDE" className="inline-block shrink-0" />
+                                  </a>
+                                ) : (
+                                  <span className="text-stone-400">-</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-stone-700">
+                                {cbxId ? (
+                                  <a
+                                    href={matchedPlayer?.cbxUrl || `https://www.cbx.org.br/jogador/${cbxId}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 hover:text-stone-950 font-bold hover:underline"
+                                    title={`Abrir perfil CBX de ${s.playerName} (${cbxId})`}
+                                  >
+                                    <span>{cbxId}</span>
+                                    <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="16" height="16" alt="CBX" className="inline-block shrink-0 rounded-xs" />
+                                  </a>
+                                ) : (
+                                  <span className="text-stone-400">-</span>
+                                )}
                               </td>
                               <td className="py-2.5 px-3 text-right font-mono font-black text-stone-900 text-sm">
                                 {s.points.toFixed(1)}
                               </td>
+                              {isAdmin && (
+                                <td className="py-2.5 px-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => setPlayerToRemove(s)}
+                                    title={`Remover ${s.playerName} do torneio`}
+                                    className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              )}
                             </tr>
                             );
                           })}
@@ -1008,70 +1274,145 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
         </div>
       )}
 
-      {/* Modal: Associate Players */}
+      {/* Modal: Enroll Players */}
       {isAddParticipantsModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-2xl max-w-lg w-full border border-stone-200 shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-stone-100">
               <div>
                 <h3 className="text-base font-bold text-stone-900">Inscrever Jogadores no Torneio</h3>
-                <p className="text-xs text-stone-700">Selecione da base oficial de atletas cadastrados</p>
+                <p className="text-xs text-stone-600">Busque atletas cadastrados para inscrever imediatamente</p>
               </div>
-              <button onClick={() => setIsAddParticipantsModalOpen(false)}>
+              <button 
+                onClick={() => setIsAddParticipantsModalOpen(false)}
+                className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
+                title="Fechar"
+              >
                 <X className="w-5 h-5 text-stone-600" />
               </button>
             </div>
 
-            <div className="max-h-60 overflow-y-auto space-y-1.5 p-2 bg-stone-50 rounded-xl border border-stone-200 text-xs">
-              {players.map((p) => {
-                const pId = p.id || p.fideId || p.name;
-                const isChecked = selectedParticipantIds.has(pId);
-                return (
-                  <label
-                    key={pId}
-                    className="flex items-center justify-between p-2 rounded-lg bg-white border border-stone-200 hover:border-stone-400 cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => {
-                          const next = new Set(selectedParticipantIds);
-                          if (next.has(pId)) next.delete(pId);
-                          else next.add(pId);
-                          setSelectedParticipantIds(next);
-                        }}
-                        className="rounded border-stone-300 text-stone-900"
-                      />
-                      <div>
-                        <span className={`font-bold ${p.gender === 'F' ? 'text-pink-600' : 'text-stone-900'}`}>{p.name}</span>
-                        <span className="text-stone-700 ml-1.5 font-mono">({p.title || 'S/T'})</span>
-                      </div>
-                    </div>
-                    <span className="text-[11px] font-mono text-stone-700">{p.state}</span>
-                  </label>
-                );
-              })}
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+              <input
+                type="text"
+                autoFocus
+                value={playerSearchTerm}
+                onChange={(e) => setPlayerSearchTerm(e.target.value)}
+                placeholder="Pesquisar atleta por nome..."
+                className="w-full pl-9 pr-9 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-stone-900 focus:bg-white focus:outline-hidden transition-all"
+              />
+              {playerSearchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setPlayerSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 p-0.5 rounded cursor-pointer"
+                  title="Limpar busca"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
+            {/* Players Search Results / Empty State */}
+            <div className="min-h-[180px] max-h-72 overflow-y-auto space-y-2 pr-0.5">
+              {!playerSearchTerm.trim() ? (
+                <div className="py-10 text-center bg-stone-50 rounded-xl border border-dashed border-stone-200 flex flex-col items-center justify-center">
+                  <div className="w-9 h-9 rounded-full bg-stone-100 flex items-center justify-center text-stone-400 mb-2">
+                    <Search className="w-4 h-4" />
+                  </div>
+                  <p className="text-xs font-bold text-stone-800">
+                    Digite o nome do atleta para pesquisar
+                  </p>
+                  <p className="text-[11px] text-stone-500 mt-0.5 max-w-xs">
+                    Os atletas serão listados conforme a busca para você adicionar ao torneio com um clique.
+                  </p>
+                </div>
+              ) : searchedPlayers.length === 0 ? (
+                <div className="py-10 text-center bg-stone-50 rounded-xl border border-stone-200">
+                  <p className="text-xs font-bold text-stone-700">
+                    Nenhum atleta encontrado com o nome "{playerSearchTerm}"
+                  </p>
+                  <p className="text-[11px] text-stone-500 mt-1">
+                    Verifique se o nome foi digitado corretamente ou cadastre o jogador no sistema.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {searchedPlayers.map((p) => {
+                    const pId = p.id || p.fideId || p.name;
+                    const isEnrolled =
+                      (activeTournament?.participants || []).includes(pId) ||
+                      (activeTournament?.standings || []).some(
+                        (s) => s.playerId === pId || s.playerName === p.name || (p.fideId && s.fideId === p.fideId)
+                      );
+                    const isAddingThis = isAddingPlayerId === pId;
+
+                    return (
+                      <div
+                        key={pId}
+                        className="flex items-center justify-between p-2.5 rounded-xl bg-stone-50/70 border border-stone-200 hover:border-stone-300 transition-all text-xs"
+                      >
+                        <div className="flex-1 min-w-0 pr-3">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`font-bold truncate ${p.gender === 'F' ? 'text-pink-600' : 'text-stone-900'}`}>
+                              {p.name}
+                            </span>
+                            {p.title && p.title !== 'Sem Título' && (
+                              <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-stone-900 text-white">
+                                {p.title}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px] font-mono text-stone-500 mt-0.5">
+                            {p.cbxId && <span>CBX: <strong className="text-stone-700">{p.cbxId}</strong></span>}
+                            {p.fideId && <span>FIDE: <strong className="text-stone-700">{p.fideId}</strong></span>}
+                            {p.state && <span className="font-semibold text-stone-700">{p.state}</span>}
+                          </div>
+                        </div>
+
+                        <div>
+                          {isEnrolled ? (
+                            <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold select-none cursor-default">
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Inscrito</span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={isAddingThis || !!isAddingPlayerId}
+                              onClick={() => handleInstantAddPlayer(p)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-stone-900 hover:bg-stone-800 text-white rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              {isAddingThis ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <UserPlus className="w-3.5 h-3.5" />
+                              )}
+                              <span>Adicionar</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer with only Close Button */}
             <div className="flex items-center justify-between pt-3 border-t border-stone-100 text-xs">
-              <span className="font-mono text-stone-700">
-                {selectedParticipantIds.size} atleta(s) selecionado(s)
+              <span className="font-mono text-stone-500 text-[11px]">
+                {(activeTournament?.standings || []).length} atleta(s) no torneio
               </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setIsAddParticipantsModalOpen(false)}
-                  className="px-4 py-2 border rounded-xl"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSaveParticipants}
-                  className="px-4 py-2 bg-stone-900 text-white font-bold rounded-xl"
-                >
-                  Confirmar Inscrições
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddParticipantsModalOpen(false)}
+                className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>
@@ -1195,6 +1536,49 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
               >
                 {isDeleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 <span>{isDeleting ? 'Excluindo...' : 'Excluir Torneio'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remove Player from Tournament Confirmation Modal */}
+      {playerToRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 border border-stone-200 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-stone-900">Confirmar Remoção de Jogador</h3>
+                <p className="text-xs text-stone-700 leading-relaxed">
+                  Tem certeza de que deseja remover o jogador{' '}
+                  <span className="font-bold text-stone-900">"{playerToRemove.playerName}"</span> deste torneio?
+                </p>
+                <p className="text-[11px] text-stone-500">
+                  O atleta será retirado da lista de inscritos e sua pontuação neste torneio será excluída.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-100">
+              <button
+                type="button"
+                disabled={isRemovingPlayer}
+                onClick={() => setPlayerToRemove(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-stone-700 hover:bg-stone-100 border border-stone-200 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isRemovingPlayer}
+                onClick={handleConfirmRemovePlayer}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+              >
+                {isRemovingPlayer && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isRemovingPlayer ? 'Removendo...' : 'Remover do Torneio'}</span>
               </button>
             </div>
           </div>

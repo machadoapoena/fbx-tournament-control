@@ -84,26 +84,31 @@ export interface Tournament {
   updatedAt?: string;
 }
 
+export type SwissRatingModality = 'standard' | 'rapid' | 'blitz' | 'none';
+
 export interface SwissExportConfig {
   delimiter: ';' | ',' | '\t';
   includeHeader: boolean;
-  format: 'swiss_txt' | 'csv' | 'fide_dat';
+  format: 'xlsx' | 'xml' | 'swiss_txt' | 'csv' | 'fide_dat';
+  fideRatingModality?: SwissRatingModality; // Exported as IntRating
+  cbxRatingModality?: SwissRatingModality;  // Exported as NatRating
   fields: {
     id: boolean;
     name: boolean;
-    fideId: boolean;
+    fideId: boolean; // Exported as FideID
     cbxId: boolean;
     title: boolean;
     gender: boolean;
-    birthDate: boolean;
+    birthDate: boolean; // Format DD.MM.YYYY
     country: boolean;
     state: boolean;
-    ratingFide: boolean;
-    ratingFideRapid: boolean;
-    ratingFideBlitz: boolean;
-    ratingCbx: boolean;
-    ratingCbxRapid: boolean;
-    ratingCbxBlitz: boolean;
+    ratingFide?: boolean;
+    ratingFideRapid?: boolean;
+    ratingFideBlitz?: boolean;
+    ratingCbx?: boolean;
+    ratingCbxRapid?: boolean;
+    ratingCbxBlitz?: boolean;
+    k?: boolean; // Empty column K for Swiss-Manager
     club: boolean;
   };
 }

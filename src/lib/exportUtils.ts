@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { Player, SwissExportConfig, Tournament } from '../types/chess';
 
 // Calculate age from YYYY-MM-DD
@@ -96,17 +97,46 @@ export function exportPlayersToCSV(players: Player[], filename = 'jogadores_xadr
   triggerDownload(csvContent, filename, 'text/csv;charset=utf-8');
 }
 
-// Swiss-Manager Custom Exporter
-export function exportToSwissManager(
+// Helper to format date as DD.MM.YYYY for Swiss-Manager
+export function formatSwissBirthday(dateStr?: string): string {
+  if (!dateStr) return '';
+  const trimmed = dateStr.trim();
+  if (!trimmed) return '';
+
+  // Already DD.MM.YYYY
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // DD/MM/YYYY
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
+    const parts = trimmed.split('/');
+    if (parts.length === 3) {
+      return `${parts[0].padStart(2, '0')}.${parts[1].padStart(2, '0')}.${parts[2]}`;
+    }
+  }
+
+  // YYYY-MM-DD
+  const parts = trimmed.split('-');
+  if (parts.length === 3) {
+    const year = parts[0];
+    const month = parts[1].padStart(2, '0');
+    const day = parts[2].padStart(2, '0');
+    return `${day}.${month}.${year}`;
+  }
+  return trimmed;
+}
+
+// Swiss-Manager Excel Exporter (.xlsx)
+export function exportToSwissManagerExcel(
   players: Player[],
   config: SwissExportConfig,
-  filename = 'swiss_manager_jogadores.txt'
+  filename = 'swiss_manager_import.xlsx'
 ) {
-  const delimiter = config.delimiter;
   const headers: string[] = [];
   
-  if (config.fields.id) headers.push('ID');
-  if (config.fields.fideId) headers.push('FIDE_ID');
+  if (config.fields.id) headers.push('ID_No');
+  if (config.fields.fideId) headers.push('FideID');
   if (config.fields.cbxId) headers.push('CBX_ID');
   if (config.fields.name) headers.push('NAME');
   if (config.fields.title) headers.push('TITLE');
@@ -114,12 +144,265 @@ export function exportToSwissManager(
   if (config.fields.birthDate) headers.push('BIRTHDAY');
   if (config.fields.country) headers.push('FED');
   if (config.fields.state) headers.push('STATE');
-  if (config.fields.ratingFide) headers.push('RATING_FIDE_STD');
-  if (config.fields.ratingFideRapid) headers.push('RATING_FIDE_RAPID');
-  if (config.fields.ratingFideBlitz) headers.push('RATING_FIDE_BLITZ');
-  if (config.fields.ratingCbx) headers.push('RATING_CBX_STD');
-  if (config.fields.ratingCbxRapid) headers.push('RATING_CBX_RAPID');
-  if (config.fields.ratingCbxBlitz) headers.push('RATING_CBX_BLITZ');
+
+  const fideModality = config.fideRatingModality ?? 'standard';
+  if (fideModality !== 'none') {
+    headers.push('IntRating');
+  }
+
+  const cbxModality = config.cbxRatingModality ?? 'standard';
+  if (cbxModality !== 'none') {
+    headers.push('NatRating');
+  }
+
+  if (config.fields.k ?? true) {
+    headers.push('K');
+  }
+
+  if (config.fields.club) headers.push('CLUB');
+
+  const rows = players.map((p, index) => {
+    const rowValues: (string | number)[] = [];
+    if (config.fields.id) rowValues.push(index + 1);
+    if (config.fields.fideId) {
+      const fid = p.fideId ? (Number(p.fideId) || p.fideId) : '';
+      rowValues.push(fid);
+    }
+    if (config.fields.cbxId) {
+      const cid = p.cbxId ? (Number(p.cbxId) || p.cbxId) : '';
+      rowValues.push(cid);
+    }
+    if (config.fields.name) rowValues.push(p.name || '');
+    if (config.fields.title) rowValues.push(p.title === 'Sem Título' ? '' : (p.title || ''));
+    if (config.fields.gender) rowValues.push(p.gender === 'F' ? 'w' : 'm');
+    if (config.fields.birthDate) {
+      rowValues.push(formatSwissBirthday(p.birthDate));
+    }
+    if (config.fields.country) rowValues.push(p.country === 'Brasil' || !p.country ? 'BRA' : p.country);
+    if (config.fields.state) rowValues.push(p.state || '');
+
+    // IntRating (Rating FIDE Internacional)
+    if (fideModality !== 'none') {
+      let r = 0;
+      if (fideModality === 'standard') r = p.ratingFideStandard || p.ratingFide || 0;
+      else if (fideModality === 'rapid') r = p.ratingFideRapid || 0;
+      else if (fideModality === 'blitz') r = p.ratingFideBlitz || 0;
+      rowValues.push(r > 0 ? r : '');
+    }
+
+    // NatRating (Rating CBX Nacional)
+    if (cbxModality !== 'none') {
+      let r = 0;
+      if (cbxModality === 'standard') r = p.ratingCbxStandard || p.ratingCbx || 0;
+      else if (cbxModality === 'rapid') r = p.ratingCbxRapid || 0;
+      else if (cbxModality === 'blitz') r = p.ratingCbxBlitz || 0;
+      rowValues.push(r > 0 ? r : '');
+    }
+
+    // Coluna K (vazia para o Swiss-Manager)
+    if (config.fields.k ?? true) {
+      rowValues.push('');
+    }
+
+    if (config.fields.club) rowValues.push(p.club || '');
+
+    return rowValues;
+  });
+
+  const sheetData = config.includeHeader ? [headers, ...rows] : rows;
+  const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
+
+  // Column widths for professional Excel presentation
+  const colWidths = headers.map((h) => {
+    if (h === 'NAME') return { wch: 32 };
+    if (h === 'BIRTHDAY') return { wch: 14 };
+    if (h === 'CLUB') return { wch: 20 };
+    if (h === 'FideID' || h === 'CBX_ID') return { wch: 12 };
+    if (h === 'IntRating' || h === 'NatRating') return { wch: 11 };
+    return { wch: 10 };
+  });
+  worksheet['!cols'] = colWidths;
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'SwissManager');
+
+  XLSX.writeFile(workbook, filename);
+}
+
+// Helper to parse Name into Lastname and Firstname
+export function parsePlayerNames(fullName: string): { lastname: string; firstname: string } {
+  if (!fullName) return { lastname: '', firstname: '' };
+  const trimmed = fullName.trim();
+  if (trimmed.includes(',')) {
+    const [last, ...first] = trimmed.split(',');
+    return {
+      lastname: last.trim(),
+      firstname: first.join(',').trim(),
+    };
+  }
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 1) {
+    return { lastname: parts[0], firstname: '' };
+  }
+  return {
+    lastname: parts[parts.length - 1],
+    firstname: parts.slice(0, -1).join(' '),
+  };
+}
+
+// Helper to format Birthday as YYYYMMDD for Swiss-Manager XML
+export function formatSwissXmlBirthday(dateStr?: string): string {
+  if (!dateStr) return '';
+  const trimmed = dateStr.trim();
+  if (!trimmed) return '';
+
+  // If already YYYYMMDD (8 digits)
+  if (/^\d{8}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // If YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed.replace(/-/g, '');
+  }
+
+  // If DD.MM.YYYY
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmed)) {
+    const [d, m, y] = trimmed.split('.');
+    return `${y}${m}${d}`;
+  }
+
+  // If DD/MM/YYYY
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
+    const parts = trimmed.split('/');
+    if (parts.length === 3) {
+      return `${parts[2]}${parts[1].padStart(2, '0')}${parts[0].padStart(2, '0')}`;
+    }
+  }
+
+  return trimmed.replace(/\D/g, '');
+}
+
+// Escape XML attribute values
+function escapeXmlAttr(str: string | number = ''): string {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Generate Swiss-Manager XML string matching official format
+export function generateSwissManagerXMLString(
+  players: Player[],
+  config?: Partial<SwissExportConfig>
+): string {
+  const fideModality = config?.fideRatingModality ?? 'standard';
+  const cbxModality = config?.cbxRatingModality ?? 'standard';
+
+  const playerNodes = players.map((p, index) => {
+    const uniqueId = index + 1;
+    const { lastname, firstname } = parsePlayerNames(p.name || '');
+    const fed = p.country === 'Brasil' || !p.country ? 'BRA' : p.country;
+    const fideId = p.fideId || '';
+
+    let rating = 0;
+    if (fideModality === 'standard') rating = p.ratingFideStandard || p.ratingFide || 0;
+    else if (fideModality === 'rapid') rating = p.ratingFideRapid || 0;
+    else if (fideModality === 'blitz') rating = p.ratingFideBlitz || 0;
+
+    const natId = p.cbxId || '';
+
+    let natRating = 0;
+    if (cbxModality === 'standard') natRating = p.ratingCbxStandard || p.ratingCbx || 0;
+    else if (cbxModality === 'rapid') natRating = p.ratingCbxRapid || 0;
+    else if (cbxModality === 'blitz') natRating = p.ratingCbxBlitz || 0;
+
+    const birthday = formatSwissXmlBirthday(p.birthDate);
+    const gender = p.gender === 'F' ? 'w' : 'm';
+    const title = p.title && p.title !== 'Sem Título' ? p.title : '';
+
+    return `  <Player 
+    PlayerUniqueId="${uniqueId}" 
+    Lastname="${escapeXmlAttr(lastname)}" 
+    Firstname="${escapeXmlAttr(firstname)}" 
+    Federation="${escapeXmlAttr(fed)}" 
+    FIDEId="${escapeXmlAttr(fideId)}" 
+    Rating="${rating > 0 ? rating : ''}" 
+    NatId="${escapeXmlAttr(natId)}" 
+    NatRating="${natRating > 0 ? natRating : ''}" 
+    Birthday="${escapeXmlAttr(birthday)}" 
+    Gender="${gender}" 
+    Title="${escapeXmlAttr(title)}"
+  />`;
+  });
+
+  return `<Players>\n${playerNodes.join('\n')}\n</Players>\n`;
+}
+
+// Swiss-Manager XML Exporter matching:
+// <Players>
+//   <Player PlayerUniqueId="1" Lastname="Silva" Firstname="Joao" Federation="BRA" FIDEId="2100123" Rating="2150" NatId="9999" NatRating="2000" Birthday="19900515" Gender="m" Title="GM" />
+// </Players>
+export function exportToSwissManagerXML(
+  players: Player[],
+  config?: Partial<SwissExportConfig>,
+  filename = 'swiss_manager_players.xml'
+): string {
+  const xmlContent = generateSwissManagerXMLString(players, config);
+
+  if (filename) {
+    triggerDownload(xmlContent, filename, 'application/xml;charset=utf-8');
+  }
+  return xmlContent;
+}
+
+// Swiss-Manager Custom Exporter (Excel .xlsx, XML, Text, CSV, DAT)
+export function exportToSwissManager(
+  players: Player[],
+  config: SwissExportConfig,
+  filename = 'swiss_manager_jogadores.xlsx'
+) {
+  if (config.format === 'xlsx') {
+    const finalFilename = filename.endsWith('.xlsx') ? filename : `${filename.replace(/\.[^/.]+$/, '')}.xlsx`;
+    exportToSwissManagerExcel(players, config, finalFilename);
+    return;
+  }
+
+  if (config.format === 'xml') {
+    const finalFilename = filename.endsWith('.xml') ? filename : `${filename.replace(/\.[^/.]+$/, '')}.xml`;
+    exportToSwissManagerXML(players, config, finalFilename);
+    return;
+  }
+
+  const delimiter = config.delimiter;
+  const headers: string[] = [];
+  
+  if (config.fields.id) headers.push('ID_No');
+  if (config.fields.fideId) headers.push('FideID');
+  if (config.fields.cbxId) headers.push('CBX_ID');
+  if (config.fields.name) headers.push('NAME');
+  if (config.fields.title) headers.push('TITLE');
+  if (config.fields.gender) headers.push('SEX');
+  if (config.fields.birthDate) headers.push('BIRTHDAY');
+  if (config.fields.country) headers.push('FED');
+  if (config.fields.state) headers.push('STATE');
+
+  const fideModality = config.fideRatingModality ?? 'standard';
+  if (fideModality !== 'none') {
+    headers.push('IntRating');
+  }
+
+  const cbxModality = config.cbxRatingModality ?? 'standard';
+  if (cbxModality !== 'none') {
+    headers.push('NatRating');
+  }
+
+  if (config.fields.k ?? true) {
+    headers.push('K');
+  }
+
   if (config.fields.club) headers.push('CLUB');
 
   const rows = players.map((p, index) => {
@@ -128,19 +411,37 @@ export function exportToSwissManager(
     if (config.fields.fideId) rowValues.push(p.fideId || '');
     if (config.fields.cbxId) rowValues.push(p.cbxId || '');
     if (config.fields.name) rowValues.push(p.name || '');
-    if (config.fields.title) rowValues.push(p.title === 'Sem Título' ? '' : p.title);
+    if (config.fields.title) rowValues.push(p.title === 'Sem Título' ? '' : p.title || '');
     if (config.fields.gender) rowValues.push(p.gender === 'F' ? 'w' : 'm');
     if (config.fields.birthDate) {
-      rowValues.push(p.birthDate ? p.birthDate.replace(/-/g, '/') : '');
+      rowValues.push(formatSwissBirthday(p.birthDate));
     }
-    if (config.fields.country) rowValues.push(p.country === 'Brasil' ? 'BRA' : p.country);
+    if (config.fields.country) rowValues.push(p.country === 'Brasil' ? 'BRA' : p.country || 'BRA');
     if (config.fields.state) rowValues.push(p.state || '');
-    if (config.fields.ratingFide) rowValues.push(String(p.ratingFideStandard || p.ratingFide || 0));
-    if (config.fields.ratingFideRapid) rowValues.push(String(p.ratingFideRapid || 0));
-    if (config.fields.ratingFideBlitz) rowValues.push(String(p.ratingFideBlitz || 0));
-    if (config.fields.ratingCbx) rowValues.push(String(p.ratingCbxStandard || p.ratingCbx || 0));
-    if (config.fields.ratingCbxRapid) rowValues.push(String(p.ratingCbxRapid || 0));
-    if (config.fields.ratingCbxBlitz) rowValues.push(String(p.ratingCbxBlitz || 0));
+
+    // IntRating (Rating FIDE Internacional)
+    if (fideModality !== 'none') {
+      let r = 0;
+      if (fideModality === 'standard') r = p.ratingFideStandard || p.ratingFide || 0;
+      else if (fideModality === 'rapid') r = p.ratingFideRapid || 0;
+      else if (fideModality === 'blitz') r = p.ratingFideBlitz || 0;
+      rowValues.push(String(r));
+    }
+
+    // NatRating (Rating CBX Nacional)
+    if (cbxModality !== 'none') {
+      let r = 0;
+      if (cbxModality === 'standard') r = p.ratingCbxStandard || p.ratingCbx || 0;
+      else if (cbxModality === 'rapid') r = p.ratingCbxRapid || 0;
+      else if (cbxModality === 'blitz') r = p.ratingCbxBlitz || 0;
+      rowValues.push(String(r));
+    }
+
+    // Coluna K (vazia para o Swiss-Manager)
+    if (config.fields.k ?? true) {
+      rowValues.push('');
+    }
+
     if (config.fields.club) rowValues.push(p.club || '');
 
     return rowValues.join(delimiter);
@@ -291,12 +592,13 @@ export function exportTournamentStandingsToPDF(tournament: Tournament) {
   doc.text(`Local: ${tournament.city} - ${tournament.state} | Modalidade: ${modalityLabel} | Rodadas: ${tournament.rounds} | Ritmo: ${tournament.timeControl}`, 40, 48);
 
   const standings = tournament.standings || [];
-  const tableHead = [['Pos', 'Jogador', 'Título', 'ID FIDE', 'Pts']];
+  const tableHead = [['Pos', 'Jogador', 'Título', 'ID FIDE', 'ID CBX', 'Pts']];
   const tableBody = standings.map((s, idx) => [
     s.rank || idx + 1,
     s.playerName,
     s.title || '-',
     s.fideId || '-',
+    s.cbxId || '-',
     s.points.toFixed(1)
   ]);
 
