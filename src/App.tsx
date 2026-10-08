@@ -18,6 +18,7 @@ import { PlayerFormModal } from './components/PlayerFormModal';
 import { SwissExportModal } from './components/SwissExportModal';
 import { TournamentManager } from './components/TournamentManager';
 import { LoginModal } from './components/LoginModal';
+import { PlayerProfileModal } from './components/PlayerProfileModal';
 
 import { 
   CheckCircle2, 
@@ -47,6 +48,7 @@ export default function App() {
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [isSwissModalOpen, setIsSwissModalOpen] = useState(false);
   const [swissSelectedIds, setSwissSelectedIds] = useState<string[]>([]);
+  const [selectedProfilePlayer, setSelectedProfilePlayer] = useState<Player | null>(null);
 
   // Filter pass-through from stats cards
   const [appliedFilter, setAppliedFilter] = useState<{ type: 'gender' | 'title' | 'state'; value: string } | null>(null);
@@ -293,6 +295,7 @@ export default function App() {
                 onOpenSwissModalWithSelected={handleOpenSwissModalWithSelected}
                 initialFilter={appliedFilter}
                 onClearInitialFilter={() => setAppliedFilter(null)}
+                onViewPlayer={(p) => setSelectedProfilePlayer(p)}
               />
             )}
 
@@ -365,6 +368,14 @@ export default function App() {
         players={players}
         selectedPlayerIds={swissSelectedIds}
       />
+
+      {selectedProfilePlayer && (
+        <PlayerProfileModal
+          player={selectedProfilePlayer}
+          isOpen={!!selectedProfilePlayer}
+          onClose={() => setSelectedProfilePlayer(null)}
+        />
+      )}
     </div>
   );
 }

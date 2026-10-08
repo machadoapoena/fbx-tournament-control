@@ -3,6 +3,7 @@ import { Player } from '../types/chess';
 import { calculateAge, exportPlayersToCSV, exportPlayersToPDF } from '../lib/exportUtils';
 import { playerService } from '../lib/services/playerService';
 import { FideRatingUpdateModal } from './FideRatingUpdateModal';
+import { PlayerProfileModal } from './PlayerProfileModal';
 import { 
   Search, 
   ExternalLink, 
@@ -26,7 +27,9 @@ import {
   Users, 
   Loader2, 
   Database,
-  RefreshCw
+  RefreshCw,
+  TrendingUp,
+  Activity
 } from 'lucide-react';
 
 interface PublicPlayerTableProps {
@@ -35,6 +38,7 @@ interface PublicPlayerTableProps {
   onOpenSwissModalWithSelected: (selectedPlayerIds: string[]) => void;
   initialFilter?: { type: 'gender' | 'title' | 'state'; value: string } | null;
   onClearInitialFilter?: () => void;
+  onViewPlayer?: (player: Player) => void;
 }
 
 export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
@@ -43,11 +47,23 @@ export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
   onOpenSwissModalWithSelected,
   initialFilter,
   onClearInitialFilter,
+  onViewPlayer,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTitle, setSelectedTitle] = useState<string>('todos');
   const [selectedGender, setSelectedGender] = useState<string>('todos');
   const [selectedState, setSelectedState] = useState<string>('todos');
+
+  // Player Profile Modal state
+  const [internalProfilePlayer, setInternalProfilePlayer] = useState<Player | null>(null);
+
+  const handleViewPlayer = (player: Player) => {
+    if (onViewPlayer) {
+      onViewPlayer(player);
+    } else {
+      setInternalProfilePlayer(player);
+    }
+  };
 
   // FIDE rating update modal state
   const [isFideUpdateModalOpen, setIsFideUpdateModalOpen] = useState(false);
@@ -621,7 +637,7 @@ export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
                   <th className="py-3 px-3">IDs</th>
                   <th className="py-3 px-3">FIDE</th>
                   <th className="py-3 px-3">CBX</th>
-                  <th className="py-3 px-3 text-center w-24">Perfis</th>
+                  <th className="py-3 px-3 text-center w-28">Evolução / Perfis</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100 text-sm">
@@ -656,11 +672,19 @@ export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
                         />
                       </td>
 
-                      {/* Name */}
+                      {/* Name - Clickable to open Profile & Rating Evolution Modal */}
                       <td className="py-3.5 px-4">
-                        <div className={`font-bold flex items-center gap-1.5 ${player.gender === 'F' ? 'text-pink-600' : 'text-stone-900'}`}>
-                          {player.name}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleViewPlayer(player)}
+                          className={`font-bold flex items-center gap-1.5 text-left group hover:underline cursor-pointer transition-colors ${
+                            player.gender === 'F' ? 'text-pink-600 hover:text-pink-700' : 'text-stone-900 hover:text-emerald-700'
+                          }`}
+                          title={`Ver perfil e gráfico de evolução de rating de ${player.name}`}
+                        >
+                          <span>{player.name}</span>
+                          <TrendingUp className="w-3.5 h-3.5 text-stone-400 group-hover:text-emerald-600 transition-colors opacity-70 group-hover:opacity-100" />
+                        </button>
                       </td>
 
                       {/* Title */}
@@ -811,19 +835,29 @@ export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
                         </div>
                       </td>
 
-                      {/* Profiles Links */}
+                      {/* Evolution & Profiles Links */}
                       <td className="py-3.5 px-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          {/* Dedicated Rating Evolution Chart Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleViewPlayer(player)}
+                            className="p-1 rounded-lg bg-stone-100 hover:bg-emerald-50 text-stone-600 hover:text-emerald-700 border border-stone-200 hover:border-emerald-300 transition-colors cursor-pointer shadow-2xs"
+                            title={`Abrir perfil e gráfico de evolução de rating (FIDE & CBX) de ${player.name}`}
+                          >
+                            <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                          </button>
+
                           {player.fideUrl || player.fideId ? (
                             <a
                               href={player.fideUrl || `https://ratings.fide.com/profile/${player.fideId}`}
                               target="_blank"
                               rel="noreferrer"
                               title={`Abrir perfil FIDE oficial de ${player.name} (${player.fideId || ''})`}
-                              
+                              className="p-0.5 hover:opacity-80 transition-opacity"
                             >
-                              <span >
-                                <img src="https://www.fide.com/img/logo1.png" width="23"/>
+                              <span>
+                                <img src="https://www.fide.com/img/logo1.png" width="22" alt="FIDE" />
                               </span>
                             </a>
                           ) : null}
@@ -834,9 +868,10 @@ export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
                               target="_blank"
                               rel="noreferrer"
                               title={`Abrir perfil CBX oficial de ${player.name} (${player.cbxId || ''})`}
+                              className="p-0.5 hover:opacity-80 transition-opacity"
                             >
                               <span>
-                                <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="23"/>
+                                <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="22" alt="CBX" className="rounded-xs" />
                               </span>
                             </a>
                           ) : null}
@@ -993,6 +1028,13 @@ export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
         onSuccess={() => {
           fetchPageFromFirebase();
         }}
+      />
+
+      {/* Player Profile & Rating Evolution Modal */}
+      <PlayerProfileModal
+        player={internalProfilePlayer}
+        isOpen={!!internalProfilePlayer}
+        onClose={() => setInternalProfilePlayer(null)}
       />
     </div>
   );

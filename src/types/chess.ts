@@ -18,6 +18,14 @@ export type ChessTitle =
 
 export type Gender = 'M' | 'F' | 'Outro';
 
+export interface RatingHistoryEntry {
+  period: string; // e.g. "Jul/2026", "Jun/2026", "2026-07"
+  date?: string; // ISO date or YYYY-MM
+  standard?: number | null;
+  rapid?: number | null;
+  blitz?: number | null;
+}
+
 export interface Player {
   id?: string;
   name: string;
@@ -42,6 +50,10 @@ export interface Player {
   ratingCbxStandard?: number;
   ratingCbxRapid?: number;
   ratingCbxBlitz?: number;
+
+  // Rating Evolutions (Histórico)
+  cbxHistory?: RatingHistoryEntry[];
+  fideHistory?: RatingHistoryEntry[];
 
   club?: string;
   notes?: string;

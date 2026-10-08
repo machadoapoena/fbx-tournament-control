@@ -293,11 +293,554 @@ function parseCbxHtml(html: string) {
   return result;
 }
 
+// Helper to parse full CBX Rating History across all modalities
+function parseCbxHistory(html: string): Array<{ period: string; standard: number | null; rapid: number | null; blitz: number | null }> {
+  const history: Array<{ period: string; standard: number | null; rapid: number | null; blitz: number | null }> = [];
+  if (!html) return history;
+
+  try {
+    const $ = cheerio.load(html);
+    const table = $('#ContentPlaceHolder1_gdvRating, table[id*="ContentPlaceHolder1_gdvRating"], table[id*="gdvRating"]');
+    
+    if (table.length > 0) {
+      table.find('tr').each((i, el) => {
+        if (i === 0) return; // Header row: [Mês/Ano, Clássico, Rápido, Blitz]
+        const tds = $(el).find('td');
+        if (tds.length >= 4) {
+          const period = tds.eq(0).text().trim();
+          const std = extractRating(tds.eq(1).text());
+          const rap = extractRating(tds.eq(2).text());
+          const blz = extractRating(tds.eq(3).text());
+          if (period && (std !== null || rap !== null || blz !== null)) {
+            history.push({ period, standard: std, rapid: rap, blitz: blz });
+          }
+        }
+      });
+    }
+
+    // Direct regex fallback if table ID was slightly different
+    if (history.length === 0) {
+      const rowMatches = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi);
+      if (rowMatches && rowMatches.length > 1) {
+        for (let i = 1; i < rowMatches.length; i++) {
+          const rowHtml = rowMatches[i];
+          const tdMatches = rowHtml.match(/<td[^>]*>([\s\S]*?)<\/td>/gi);
+          if (tdMatches && tdMatches.length >= 4) {
+            const period = cheerio.load(tdMatches[0])('td').text().trim();
+            const std = extractRating(tdMatches[1]);
+            const rap = extractRating(tdMatches[2]);
+            const blz = extractRating(tdMatches[3]);
+            if (period && (std !== null || rap !== null || blz !== null)) {
+              history.push({ period, standard: std, rapid: rap, blitz: blz });
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error parsing CBX history:', e);
+  }
+
+  return history;
+}
+
+// Helper to parse FIDE chart / history from JSON, AJAX, HTML or Highcharts snippet
+function parseFideHistory(htmlOrJson: string): Array<{ period: string; standard: number | null; rapid: number | null; blitz: number | null }> {
+  const historyMap = new Map<string, { period: string; standard: number | null; rapid: number | null; blitz: number | null }>();
+  if (!htmlOrJson) return [];
+
+  try {
+    const formatPeriod = (raw: string): string => {
+      const s = String(raw).trim();
+      const match = s.match(/^(\d{4})-(\d{2})(?:-\d{2})?$/);
+      if (match) {
+        const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        const mIdx = parseInt(match[2], 10) - 1;
+        const mName = months[mIdx] || match[2];
+        return `${mName}/${match[1]}`;
+      }
+      return s;
+    };
+
+    // Strategy 1 (Top Priority): Rendered table with class="profile-table_calc"
+    const $ = cheerio.load(htmlOrJson);
+    const calcTables = $('table.profile-table_calc, table[class*="profile-table_calc"]');
+    if (calcTables.length > 0) {
+      calcTables.each((_, tbl) => {
+        const $tbl = $(tbl);
+        const rows = $tbl.find('tr');
+        if (rows.length < 2) return;
+
+        let periodIdx = -1;
+        let stdIdx = -1;
+        let rapIdx = -1;
+        let blzIdx = -1;
+
+        // Inspect header rows
+        for (let r = 0; r < Math.min(rows.length, 3); r++) {
+          const headerTds = rows.eq(r).find('th, td');
+          headerTds.each((idx, el) => {
+            const rawTxt = $(el).text().trim().toUpperCase();
+            const colTxt = rawTxt.replace(/[\.\s]+/g, ' ').trim();
+
+            if (colTxt.includes('GMS') || colTxt.includes('GAME') || colTxt.includes('PARTIDA') || colTxt.includes('JOGO')) {
+              return;
+            }
+
+            if (periodIdx === -1 && (colTxt.includes('PERIOD') || colTxt.includes('MÊS') || colTxt.includes('MES') || colTxt.includes('DATE') || colTxt.includes('PERÍODO'))) {
+              periodIdx = idx;
+            } else if (
+              stdIdx === -1 &&
+              (colTxt.includes('STD RATING') ||
+                colTxt === 'STD' ||
+                colTxt.startsWith('STD ') ||
+                colTxt.includes('STANDAR') ||
+                colTxt.includes('CLÁSSIC') ||
+                colTxt.includes('CLASSIC'))
+            ) {
+              stdIdx = idx;
+            } else if (
+              rapIdx === -1 &&
+              (colTxt.includes('RPD') ||
+                colTxt.includes('RAPID') ||
+                colTxt.includes('RÁPID') ||
+                colTxt === 'RAP' ||
+                colTxt.startsWith('RAP '))
+            ) {
+              rapIdx = idx;
+            } else if (
+              blzIdx === -1 &&
+              (colTxt.includes('BLZ') ||
+                colTxt.includes('BLITZ') ||
+                colTxt.includes('BLT'))
+            ) {
+              blzIdx = idx;
+            }
+          });
+
+          if (stdIdx !== -1 || rapIdx !== -1 || blzIdx !== -1) break;
+        }
+
+        if (periodIdx === -1) periodIdx = 0;
+
+        rows.slice(1).each((_, row) => {
+          const tds = $(row).find('td');
+          if (tds.length === 0) return;
+
+          const rawPeriod = tds.eq(periodIdx >= 0 ? periodIdx : 0).text().trim();
+          if (!rawPeriod || (!/\d{4}/.test(rawPeriod) && !/\d{2}\/\d{2}/.test(rawPeriod))) {
+            return;
+          }
+          const period = formatPeriod(rawPeriod);
+
+          let std: number | null = null;
+          let rap: number | null = null;
+          let blz: number | null = null;
+
+          if (stdIdx !== -1 || rapIdx !== -1 || blzIdx !== -1) {
+            if (stdIdx !== -1 && stdIdx < tds.length) std = extractRating(tds.eq(stdIdx).text());
+            if (rapIdx !== -1 && rapIdx < tds.length) rap = extractRating(tds.eq(rapIdx).text());
+            if (blzIdx !== -1 && blzIdx < tds.length) blz = extractRating(tds.eq(blzIdx).text());
+          } else if (tds.length >= 7) {
+            std = extractRating(tds.eq(1).text());
+            rap = extractRating(tds.eq(3).text());
+            blz = extractRating(tds.eq(5).text());
+          } else if (tds.length >= 4) {
+            std = extractRating(tds.eq(1).text());
+            rap = extractRating(tds.eq(2).text());
+            blz = extractRating(tds.eq(3).text());
+          }
+
+          if (std !== null || rap !== null || blz !== null) {
+            if (!historyMap.has(period)) {
+              historyMap.set(period, { period, standard: std, rapid: rap, blitz: blz });
+            } else {
+              const existing = historyMap.get(period)!;
+              if (std !== null) existing.standard = std;
+              if (rap !== null) existing.rapid = rap;
+              if (blz !== null) existing.blitz = blz;
+            }
+          }
+        });
+      });
+
+      if (historyMap.size > 0) {
+        return Array.from(historyMap.values());
+      }
+    }
+
+    // Strategy 2: FIDE official AJAX endpoint / JSON
+    let jsonData: any = null;
+    const trimmed = typeof htmlOrJson === 'string' ? htmlOrJson.trim() : '';
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        jsonData = JSON.parse(trimmed);
+      } catch {}
+    } else {
+      const jsonMatch = htmlOrJson.match(/\[\s*\{[\s\S]*?(?:date_2|rapid_rtng|blitz_rtng)[\s\S]*?\}\s*\]/);
+      if (jsonMatch) {
+        try {
+          jsonData = JSON.parse(jsonMatch[0]);
+        } catch {}
+      }
+    }
+
+    if (Array.isArray(jsonData) && jsonData.length > 0) {
+      for (const item of jsonData) {
+        if (!item || typeof item !== 'object') continue;
+        const rawDate = item.date_2 || item.date_1 || item.date || item.period || item.name;
+        if (!rawDate) continue;
+        const period = formatPeriod(rawDate);
+        const std = extractRating(item.rating);
+        const rap = extractRating(item.rapid_rtng || item.rapid || item.rapid_rating);
+        const blz = extractRating(item.blitz_rtng || item.blitz || item.blitz_rating);
+
+        if (std !== null || rap !== null || blz !== null) {
+          historyMap.set(period, {
+            period,
+            standard: std,
+            rapid: rap,
+            blitz: blz,
+          });
+        }
+      }
+
+      if (historyMap.size > 0) {
+        return Array.from(historyMap.values());
+      }
+    }
+
+    const extractSeriesData = (seriesNameRegex: RegExp) => {
+      const match = htmlOrJson.match(seriesNameRegex);
+      if (!match) return [];
+      const content = match[1];
+      const points: Array<{ period: string; rating: number }> = [];
+      
+      const ptRegex = /\[\s*(?:Date\.UTC\((\d{4}),\s*(\d{1,2})[^\)]*\)|(\d{10,13})|['"]([^'"]+)['"])\s*,\s*(\d{3,4})\s*\]/g;
+      let m;
+      while ((m = ptRegex.exec(content)) !== null) {
+        let period = '';
+        if (m[1] && m[2]) {
+          const year = m[1];
+          const month = parseInt(m[2], 10) + 1;
+          period = `${String(month).padStart(2, '0')}/${year}`;
+        } else if (m[3]) {
+          const d = new Date(parseInt(m[3], 10));
+          period = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+        } else if (m[4]) {
+          period = m[4];
+        }
+        const rating = parseInt(m[5], 10);
+        if (period && rating >= 400 && rating <= 3800) {
+          points.push({ period, rating });
+        }
+      }
+      return points;
+    };
+
+    const stdPoints = extractSeriesData(/name\s*:\s*['"](?:Standard|Std|Classical|STD\.?\s*RATING)['"][\s\S]*?data\s*:\s*\[([\s\S]*?)\]/i);
+    const rapPoints = extractSeriesData(/name\s*:\s*['"](?:Rapid|Rap|Rpd|RPD\.?\s*RATING)['"][\s\S]*?data\s*:\s*\[([\s\S]*?)\]/i);
+    const blzPoints = extractSeriesData(/name\s*:\s*['"](?:Blitz|Blz|Blt|BLZ\.?\s*RATING)['"][\s\S]*?data\s*:\s*\[([\s\S]*?)\]/i);
+
+    for (const pt of stdPoints) {
+      if (!historyMap.has(pt.period)) {
+        historyMap.set(pt.period, { period: pt.period, standard: pt.rating, rapid: null, blitz: null });
+      } else {
+        historyMap.get(pt.period)!.standard = pt.rating;
+      }
+    }
+    for (const pt of rapPoints) {
+      if (!historyMap.has(pt.period)) {
+        historyMap.set(pt.period, { period: pt.period, standard: null, rapid: pt.rating, blitz: null });
+      } else {
+        historyMap.get(pt.period)!.rapid = pt.rating;
+      }
+    }
+    for (const pt of blzPoints) {
+      if (!historyMap.has(pt.period)) {
+        historyMap.set(pt.period, { period: pt.period, standard: null, rapid: null, blitz: pt.rating });
+      } else {
+        historyMap.get(pt.period)!.blitz = pt.rating;
+      }
+    }
+
+    // Also check if there's any generic table structure in FIDE page
+    $('table.profile-table, table').each((_, tbl) => {
+      const $tbl = $(tbl);
+      const rows = $tbl.find('tr');
+      if (rows.length < 2) return;
+
+      // Check header row(s) for column mapping
+      let periodIdx = -1;
+      let stdIdx = -1;
+      let rapIdx = -1;
+      let blzIdx = -1;
+
+      // Inspect up to first 2 rows for header labels
+      for (let r = 0; r < Math.min(rows.length, 2); r++) {
+        const headerTds = rows.eq(r).find('th, td');
+        headerTds.each((idx, el) => {
+          const rawTxt = $(el).text().trim().toUpperCase();
+          const colTxt = rawTxt.replace(/[\.\s]+/g, ' ').trim();
+
+          // CRITICAL: Any column with GMS or GAMES or PARTIDAS is number of games played, NOT a rating!
+          if (colTxt.includes('GMS') || colTxt.includes('GAME') || colTxt.includes('PARTIDA') || colTxt.includes('JOGO')) {
+            return;
+          }
+
+          // Period column
+          if (periodIdx === -1 && (colTxt.includes('PERIOD') || colTxt.includes('MÊS') || colTxt.includes('MES') || colTxt.includes('DATE') || colTxt.includes('PERÍODO'))) {
+            periodIdx = idx;
+          }
+          // Standard / Classic rating: Official FIDE header is "STD. RATING" (or STD, STANDARD, CLASSIC)
+          else if (
+            stdIdx === -1 &&
+            (colTxt.includes('STD RATING') ||
+              colTxt === 'STD' ||
+              colTxt.startsWith('STD ') ||
+              colTxt.includes('STANDAR') ||
+              colTxt.includes('CLÁSSIC') ||
+              colTxt.includes('CLASSIC'))
+          ) {
+            stdIdx = idx;
+          }
+          // Rapid rating: Official FIDE header is "RPD" (or RPD. RATING, RAPID, RAP)
+          else if (
+            rapIdx === -1 &&
+            (colTxt.includes('RPD') ||
+              colTxt.includes('RAPID') ||
+              colTxt.includes('RÁPID') ||
+              colTxt === 'RAP' ||
+              colTxt.startsWith('RAP '))
+          ) {
+            rapIdx = idx;
+          }
+          // Blitz rating: Official FIDE header is "BLZ" (or BLZ. RATING, BLITZ, BLT)
+          else if (
+            blzIdx === -1 &&
+            (colTxt.includes('BLZ') ||
+              colTxt.includes('BLITZ') ||
+              colTxt.includes('BLT'))
+          ) {
+            blzIdx = idx;
+          }
+        });
+
+        if (stdIdx !== -1 || rapIdx !== -1 || blzIdx !== -1) {
+          break; // Headers identified
+        }
+      }
+
+      if (periodIdx === -1) {
+        periodIdx = 0;
+      }
+
+      // If headers didn't match named columns, default based on standard FIDE chart table layout:
+      // FIDE profile chart table typically has 7 columns: [Period, STD. RATING, STD Gms, RPD, RPD Gms, BLZ, BLZ Gms]
+      // Or 4 columns without games: [Period, STD. RATING, RPD, BLZ]
+      rows.slice(1).each((_, row) => {
+        const tds = $(row).find('td');
+        if (tds.length === 0) return;
+
+        const period = tds.eq(periodIdx >= 0 ? periodIdx : 0).text().trim();
+        // Period should look like MM/YYYY, YYYY-MM, or Month YYYY (e.g. "2026-05", "May 2026", "Mai/2026")
+        if (!period || (!/\d{4}/.test(period) && !/\d{2}\/\d{2}/.test(period))) {
+          return;
+        }
+
+        let std: number | null = null;
+        let rap: number | null = null;
+        let blz: number | null = null;
+
+        if (stdIdx !== -1 || rapIdx !== -1 || blzIdx !== -1) {
+          // Used mapped header indices
+          if (stdIdx !== -1 && stdIdx < tds.length) std = extractRating(tds.eq(stdIdx).text());
+          if (rapIdx !== -1 && rapIdx < tds.length) rap = extractRating(tds.eq(rapIdx).text());
+          if (blzIdx !== -1 && blzIdx < tds.length) blz = extractRating(tds.eq(blzIdx).text());
+        } else if (tds.length >= 7) {
+          // Standard FIDE layout: Col 0: Period, Col 1: STD. RATING, Col 2: STD Gms, Col 3: RPD, Col 4: RPD Gms, Col 5: BLZ, Col 6: BLZ Gms
+          std = extractRating(tds.eq(1).text());
+          rap = extractRating(tds.eq(3).text());
+          blz = extractRating(tds.eq(5).text());
+        } else if (tds.length >= 4) {
+          // Simple 4-column layout: Col 0: Period, Col 1: STD. RATING, Col 2: RPD, Col 3: BLZ
+          std = extractRating(tds.eq(1).text());
+          rap = extractRating(tds.eq(2).text());
+          blz = extractRating(tds.eq(3).text());
+        }
+
+        if (std !== null || rap !== null || blz !== null) {
+          if (!historyMap.has(period)) {
+            historyMap.set(period, { period, standard: std, rapid: rap, blitz: blz });
+          } else {
+            const existing = historyMap.get(period)!;
+            if (std !== null) existing.standard = std;
+            if (rap !== null) existing.rapid = rap;
+            if (blz !== null) existing.blitz = blz;
+          }
+        }
+      });
+    });
+  } catch (e) {
+    console.error('Error parsing FIDE history:', e);
+  }
+
+  return Array.from(historyMap.values());
+}
+
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   app.use(express.json({ limit: '10mb' }));
+
+  // API Endpoint: Scrape Rating Evolution & History for FIDE and CBX
+  app.post('/api/player-history', async (req, res) => {
+    try {
+      const { cbxId, cbxUrl, fideId, fideUrl, rawSnippet } = req.body;
+      let cbxHistory: Array<{ period: string; standard: number | null; rapid: number | null; blitz: number | null }> = [];
+      let fideHistory: Array<{ period: string; standard: number | null; rapid: number | null; blitz: number | null }> = [];
+
+      // If raw snippet is supplied, extract directly
+      if (rawSnippet) {
+        const parsedCbxHist = parseCbxHistory(rawSnippet);
+        if (parsedCbxHist.length > 0) cbxHistory = parsedCbxHist;
+
+        const parsedFideHist = parseFideHistory(rawSnippet);
+        if (parsedFideHist.length > 0) fideHistory = parsedFideHist;
+      }
+
+      // Fetch CBX Profile to get monthly rating history
+      if (cbxId || cbxUrl) {
+        let targetCbxUrl = cbxUrl?.trim();
+        const cleanCbxId = cbxId?.toString().trim();
+        if (!targetCbxUrl && cleanCbxId) {
+          targetCbxUrl = `https://www.cbx.org.br/jogador/${encodeURIComponent(cleanCbxId)}`;
+        }
+        if (targetCbxUrl) {
+          try {
+            const cbxRes = await fetch(targetCbxUrl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              },
+              signal: AbortSignal.timeout(5000),
+            });
+            if (cbxRes.ok) {
+              const html = await cbxRes.text();
+              const hist = parseCbxHistory(html);
+              if (hist.length > 0) {
+                cbxHistory = hist;
+              }
+            }
+          } catch {
+            // Ignore CBX fetch error
+          }
+        }
+      }
+
+      // Fetch FIDE Chart / Rating History
+      if (fideId || fideUrl) {
+        const cleanFideId = fideId?.toString().trim();
+        const ajaxChartDataUrl = `https://ratings.fide.com/a_chart_data.phtml?event=${encodeURIComponent(cleanFideId)}&period=0`;
+        const targetChartUrl = fideUrl?.includes('/chart') 
+          ? fideUrl 
+          : `https://ratings.fide.com/profile/${encodeURIComponent(cleanFideId)}/chart`;
+
+        const requestConfigs: Array<{ url: string; method?: string; headers?: Record<string, string> }> = [
+          // 1. Direct AJAX POST to official FIDE a_chart_data.phtml
+          {
+            url: ajaxChartDataUrl,
+            method: 'POST',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+              'Accept': 'application/json, text/javascript, */*; q=0.01',
+              'X-Requested-With': 'XMLHttpRequest',
+              'Referer': targetChartUrl,
+            },
+          },
+          // 2. Direct AJAX GET to official FIDE a_chart_data.phtml
+          {
+            url: ajaxChartDataUrl,
+            method: 'GET',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+              'Accept': 'application/json, text/javascript, */*; q=0.01',
+              'X-Requested-With': 'XMLHttpRequest',
+              'Referer': targetChartUrl,
+            },
+          },
+          // 3. Proxied requests to official a_chart_data.phtml
+          {
+            url: `https://api.allorigins.win/raw?url=${encodeURIComponent(ajaxChartDataUrl)}`,
+            method: 'GET',
+          },
+          {
+            url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(ajaxChartDataUrl)}`,
+            method: 'GET',
+          },
+          // 4. Fallback to /profile/.../chart HTML page
+          {
+            url: targetChartUrl,
+            method: 'GET',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+              'Accept': 'text/html,*/*',
+            },
+          },
+          {
+            url: `https://api.allorigins.win/raw?url=${encodeURIComponent(targetChartUrl)}`,
+            method: 'GET',
+          },
+          {
+            url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetChartUrl)}`,
+            method: 'GET',
+          },
+          {
+            url: `https://r.jina.ai/${targetChartUrl}`,
+            method: 'GET',
+          },
+        ];
+
+        for (const cfg of requestConfigs) {
+          try {
+            const res = await fetch(cfg.url, {
+              method: cfg.method || 'GET',
+              headers: cfg.headers || {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/html, */*',
+              },
+              signal: AbortSignal.timeout(3500),
+            });
+            if (res.ok) {
+              const text = await res.text();
+              const hist = parseFideHistory(text);
+              if (hist.length > 0) {
+                fideHistory = hist;
+                break;
+              }
+            }
+          } catch {
+            // Try next source/proxy
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          cbxHistory,
+          fideHistory,
+        },
+      });
+    } catch (err: any) {
+      console.error('Player history API error:', err);
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Erro ao carregar histórico do jogador',
+      });
+    }
+  });
 
   // API Endpoint: Scrape Ratings & Details from FIDE and CBX
   app.post('/api/scrape-ratings', async (req, res) => {
