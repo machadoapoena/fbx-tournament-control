@@ -311,6 +311,7 @@ export default function App() {
                 initialFilter={appliedFilter}
                 onClearInitialFilter={() => setAppliedFilter(null)}
                 onViewPlayer={(p) => setSelectedProfilePlayer(p)}
+                tournaments={tournaments}
               />
             )}
 
@@ -390,6 +391,7 @@ export default function App() {
           isOpen={!!selectedProfilePlayer}
           onClose={() => setSelectedProfilePlayer(null)}
           onUpdatePlayerHistory={handleUpdatePlayerHistory}
+          tournaments={tournaments}
         />
       )}
     </div>

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Player } from '../types/chess';
+import { Player, Tournament } from '../types/chess';
 import { calculateAge, exportPlayersToCSV, exportPlayersToPDF } from '../lib/exportUtils';
 import { playerService } from '../lib/services/playerService';
 import { FideRatingUpdateModal } from './FideRatingUpdateModal';
@@ -39,6 +39,7 @@ interface PublicPlayerTableProps {
   initialFilter?: { type: 'gender' | 'title' | 'state'; value: string } | null;
   onClearInitialFilter?: () => void;
   onViewPlayer?: (player: Player) => void;
+  tournaments?: Tournament[];
 }
 
 export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
@@ -48,6 +49,7 @@ export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
   initialFilter,
   onClearInitialFilter,
   onViewPlayer,
+  tournaments,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTitle, setSelectedTitle] = useState<string>('todos');
@@ -1035,6 +1037,7 @@ export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
         player={internalProfilePlayer}
         isOpen={!!internalProfilePlayer}
         onClose={() => setInternalProfilePlayer(null)}
+        tournaments={tournaments}
       />
     </div>
   );

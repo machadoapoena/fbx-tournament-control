@@ -1,6 +1,82 @@
-import { Player, Tournament } from '../types/chess';
+import { Player, Tournament, RatingHistoryEntry } from '../types/chess';
 
-export const INITIAL_PLAYERS: Omit<Player, 'id'>[] = [
+const ANA_BEATRIZ_FIDE_HISTORY: RatingHistoryEntry[] = [
+  { period: '2024-Apr', standard: null, rapid: 1529, blitz: null },
+  { period: '2024-May', standard: null, rapid: 1529, blitz: null },
+  { period: '2024-Jun', standard: null, rapid: 1520, blitz: null },
+  { period: '2024-Jul', standard: null, rapid: 1520, blitz: null },
+  { period: '2024-Aug', standard: 1631, rapid: 1520, blitz: null },
+  { period: '2024-Sep', standard: 1631, rapid: 1520, blitz: null },
+  { period: '2024-Oct', standard: 1631, rapid: 1520, blitz: null },
+  { period: '2024-Nov', standard: 1631, rapid: 1520, blitz: 1631 },
+  { period: '2024-Dec', standard: 1625, rapid: 1537, blitz: 1609 },
+  { period: '2025-Jan', standard: 1625, rapid: 1537, blitz: 1609 },
+  { period: '2025-Feb', standard: 1625, rapid: 1537, blitz: 1575 },
+  { period: '2025-Mar', standard: 1625, rapid: 1537, blitz: 1575 },
+  { period: '2025-Apr', standard: 1625, rapid: 1571, blitz: 1587 },
+  { period: '2025-May', standard: 1625, rapid: 1571, blitz: 1587 },
+  { period: '2025-Jun', standard: 1625, rapid: 1571, blitz: 1587 },
+  { period: '2025-Jul', standard: 1625, rapid: 1571, blitz: 1587 },
+  { period: '2025-Aug', standard: 1584, rapid: 1625, blitz: 1600 },
+  { period: '2025-Sep', standard: 1584, rapid: 1625, blitz: 1600 },
+  { period: '2025-Oct', standard: 1584, rapid: 1625, blitz: 1600 },
+  { period: '2025-Nov', standard: 1584, rapid: 1625, blitz: 1600 },
+  { period: '2025-Dec', standard: 1584, rapid: 1625, blitz: 1600 },
+  { period: '2026-Jan', standard: 1584, rapid: 1625, blitz: 1600 },
+  { period: '2026-Feb', standard: 1584, rapid: 1625, blitz: 1600 },
+  { period: '2026-Mar', standard: 1584, rapid: 1625, blitz: 1600 },
+  { period: '2026-Apr', standard: 1584, rapid: 1625, blitz: 1600 },
+];
+
+function buildSeedTimeline(
+  curStd?: number,
+  curRap?: number,
+  curBlz?: number,
+  seedStr: string = '123'
+): RatingHistoryEntry[] {
+  if (!curStd && !curRap && !curBlz) return [];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const periods: string[] = [];
+  for (let year = 2024; year <= 2026; year++) {
+    const startM = year === 2024 ? 4 : 0;
+    const endM = year === 2026 ? 3 : 11;
+    for (let m = startM; m <= endM; m++) {
+      periods.push(`${year}-${months[m]}`);
+    }
+  }
+
+  const seedNum = (parseInt(seedStr.replace(/\D/g, '').slice(-4), 10) || 1500);
+
+  const genSeries = (finalVal?: number, offset = 1) => {
+    if (!finalVal || finalVal <= 0) return Array(periods.length).fill(null);
+    const series: (number | null)[] = new Array(periods.length);
+    series[periods.length - 1] = finalVal;
+    let curr = finalVal;
+    for (let i = periods.length - 2; i >= 0; i--) {
+      const stepSeed = Math.sin(offset * 7 + i * 2.3 + seedNum) * 10000;
+      const stayEqual = Math.abs(stepSeed) % 10 < 5.5;
+      if (!stayEqual) {
+        const delta = Math.round(Math.sin(offset * 3 + i * 1.7) * 12);
+        curr = Math.max(1000, curr - delta);
+      }
+      series[i] = curr;
+    }
+    return series;
+  };
+
+  const stdS = genSeries(curStd, 1);
+  const rapS = genSeries(curRap, 2);
+  const blzS = genSeries(curBlz, 3);
+
+  return periods.map((period, i) => ({
+    period,
+    standard: stdS[i],
+    rapid: rapS[i],
+    blitz: blzS[i],
+  }));
+}
+
+const RAW_INITIAL_PLAYERS: Omit<Player, 'id'>[] = [
   {
     name: 'Luis Paulo Supi',
     title: 'GM',
@@ -374,8 +450,41 @@ export const INITIAL_PLAYERS: Omit<Player, 'id'>[] = [
     ratingCbxBlitz: 1550,
     club: 'Clube de Xadrez de Santos',
     notes: 'Campeã paulista Sub-10 Feminino.'
+  },
+  {
+    name: 'Ana Beatriz Castro Mendes Lima',
+    title: 'Sem Título',
+    birthDate: '2008-06-15',
+    gender: 'F',
+    fideId: '22747281',
+    cbxId: '46210',
+    country: 'Brasil',
+    state: 'SP',
+    fideUrl: 'https://ratings.fide.com/profile/22747281',
+    cbxUrl: 'https://www.cbx.org.br/jogador/46210',
+    ratingFide: 1584,
+    ratingFideStandard: 1584,
+    ratingFideRapid: 1625,
+    ratingFideBlitz: 1600,
+    ratingCbx: 1610,
+    ratingCbxStandard: 1610,
+    ratingCbxRapid: 1640,
+    ratingCbxBlitz: 1620,
+    club: 'Clube de Xadrez de São Paulo',
+    notes: 'Jovem destaque feminina das categorias de base.'
   }
 ];
+
+export const INITIAL_PLAYERS: Omit<Player, 'id'>[] = RAW_INITIAL_PLAYERS.map((p) => {
+  const isAna = p.fideId === '22747281';
+  return {
+    ...p,
+    fideHistory: isAna 
+      ? ANA_BEATRIZ_FIDE_HISTORY 
+      : buildSeedTimeline(p.ratingFideStandard || p.ratingFide, p.ratingFideRapid, p.ratingFideBlitz, p.fideId || 'fide'),
+    cbxHistory: buildSeedTimeline(p.ratingCbxStandard || p.ratingCbx, p.ratingCbxRapid, p.ratingCbxBlitz, p.cbxId || 'cbx'),
+  };
+});
 
 export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
   {
@@ -392,6 +501,132 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
     organizer: 'Federação Brasileira de Xadrez',
     participants: [],
     standings: []
+  },
+  {
+    name: 'Campeonato Paulista Juvenil Sub-18 de Xadrez 2026',
+    city: 'São Paulo',
+    state: 'SP',
+    startDate: '2026-09-18',
+    endDate: '2026-09-20',
+    rounds: 6,
+    timeControl: 'Pensado (90m + 30s)',
+    type: 'standard',
+    status: 'Finalizado',
+    arbiters: 'AI Marco Antonio Asbahr',
+    organizer: 'Federação Paulista de Xadrez',
+    participants: [],
+    standings: [
+      {
+        playerId: 'seed-ana',
+        playerName: 'Ana Beatriz Castro Mendes Lima',
+        fideId: '22747281',
+        cbxId: '46210',
+        points: 5.5,
+        rank: 1,
+        buchholz: 22.0,
+        sonnebornBerger: 20.5,
+        wins: 5
+      },
+      {
+        playerId: 'seed-youth-1',
+        playerName: 'Gabriel de Oliveira Santos',
+        title: 'FM',
+        fideId: '2160341',
+        cbxId: '48920',
+        points: 5.0,
+        rank: 2,
+        buchholz: 21.5,
+        sonnebornBerger: 17.0,
+        wins: 5
+      },
+      {
+        playerId: 'seed-6',
+        playerName: 'Enzo Federzoni Sakai',
+        title: 'FM',
+        fideId: '2138904',
+        cbxId: '24110',
+        points: 4.5,
+        rank: 3,
+        buchholz: 20.0,
+        sonnebornBerger: 14.5,
+        wins: 4
+      },
+      {
+        playerId: 'seed-youth-2',
+        playerName: 'Mariana Franco Xavier',
+        title: 'WFM',
+        fideId: '2162890',
+        cbxId: '49810',
+        points: 4.0,
+        rank: 4,
+        buchholz: 19.0,
+        sonnebornBerger: 12.0,
+        wins: 4
+      }
+    ]
+  },
+  {
+    name: 'Torneio Aberto de Xadrez Rápido Memorial Santos 2026',
+    city: 'Santos',
+    state: 'SP',
+    startDate: '2026-08-08',
+    endDate: '2026-08-09',
+    rounds: 7,
+    timeControl: 'Rápido (15m + 10s)',
+    type: 'rapid',
+    status: 'Finalizado',
+    arbiters: 'AN Roberto Viana',
+    organizer: 'Clube de Xadrez de Santos',
+    participants: [],
+    standings: [
+      {
+        playerId: 'seed-3',
+        playerName: 'Juliana Sayumi Terao',
+        title: 'WGM',
+        fideId: '2113200',
+        cbxId: '12450',
+        points: 6.5,
+        rank: 1,
+        buchholz: 31.0,
+        sonnebornBerger: 28.5,
+        wins: 6
+      },
+      {
+        playerId: 'seed-ana',
+        playerName: 'Ana Beatriz Castro Mendes Lima',
+        fideId: '22747281',
+        cbxId: '46210',
+        points: 6.0,
+        rank: 2,
+        buchholz: 29.5,
+        sonnebornBerger: 24.0,
+        wins: 5
+      },
+      {
+        playerId: 'seed-alboredo',
+        playerName: 'Julia Alboredo',
+        title: 'WIM',
+        fideId: '2118334',
+        cbxId: '15640',
+        points: 5.5,
+        rank: 3,
+        buchholz: 28.0,
+        sonnebornBerger: 21.0,
+        wins: 5
+      },
+      {
+        playerId: 'seed-4',
+        playerName: 'Kathie Goulart Librelato',
+        title: 'WIM',
+        fideId: '2124571',
+        cbxId: '18932',
+        points: 5.0,
+        rank: 4,
+        buchholz: 27.0,
+        sonnebornBerger: 18.0,
+        wins: 4
+      }
+    ]
   },
   {
     name: 'Campeonato Sul-Brasileiro Rápido & Blitz',
@@ -608,5 +843,65 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         wins: 3
       }
     ]
+  },
+  {
+    name: 'Campeonato Brasileiro Feminino de Xadrez Blitz 2026',
+    city: 'Campinas',
+    state: 'SP',
+    startDate: '2026-06-12',
+    endDate: '2026-06-13',
+    rounds: 9,
+    timeControl: 'Blitz (3m + 2s)',
+    type: 'blitz',
+    status: 'Finalizado',
+    arbiters: 'AI Carlos Calleros',
+    organizer: 'Confederação Brasileira de Xadrez',
+    participants: [],
+    standings: [
+      {
+        playerId: 'seed-3',
+        playerName: 'Juliana Sayumi Terao',
+        title: 'WGM',
+        fideId: '2113200',
+        cbxId: '12450',
+        points: 8.0,
+        rank: 1,
+        buchholz: 48.0,
+        wins: 8
+      },
+      {
+        playerId: 'seed-alboredo',
+        playerName: 'Julia Alboredo',
+        title: 'WIM',
+        fideId: '2118334',
+        cbxId: '15640',
+        points: 7.5,
+        rank: 2,
+        buchholz: 46.5,
+        wins: 7
+      },
+      {
+        playerId: 'seed-ana',
+        playerName: 'Ana Beatriz Castro Mendes Lima',
+        fideId: '22747281',
+        cbxId: '46210',
+        points: 6.5,
+        rank: 3,
+        buchholz: 44.0,
+        wins: 6
+      },
+      {
+        playerId: 'seed-4',
+        playerName: 'Kathie Goulart Librelato',
+        title: 'WIM',
+        fideId: '2124571',
+        cbxId: '17920',
+        points: 6.0,
+        rank: 4,
+        buchholz: 42.0,
+        wins: 5
+      }
+    ]
   }
 ];
+

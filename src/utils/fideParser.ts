@@ -89,14 +89,24 @@ export function parseFideTableData(input: string): RatingHistoryEntry[] {
     const period = normalizePeriod(rawPeriod);
     if (!period) return;
 
-    // Strict column mapping:
-    // Col 0: Period
-    // Col 1: Standard Rating
-    // Col 3: Rapid Rating
-    // Col 5: Blitz Rating
-    const std = cells.length > 1 ? extractRatingNumber(cells[1]) : null;
-    const rap = cells.length > 3 ? extractRatingNumber(cells[3]) : null;
-    const blz = cells.length > 5 ? extractRatingNumber(cells[5]) : null;
+    // Column mapping:
+    // FIDE (6+ cols): Col 0: Period, Col 1: Std, Col 3: Rapid, Col 5: Blitz
+    // CBX / Condensed (4 cols): Col 0: Period, Col 1: Std, Col 2: Rapid, Col 3: Blitz
+    let std: number | null = null;
+    let rap: number | null = null;
+    let blz: number | null = null;
+
+    if (cells.length >= 6) {
+      std = extractRatingNumber(cells[1]);
+      rap = extractRatingNumber(cells[3]);
+      blz = extractRatingNumber(cells[5]);
+    } else if (cells.length >= 4) {
+      std = extractRatingNumber(cells[1]);
+      rap = extractRatingNumber(cells[2]);
+      blz = extractRatingNumber(cells[3]);
+    } else if (cells.length >= 2) {
+      std = extractRatingNumber(cells[1]);
+    }
 
     if (std !== null || rap !== null || blz !== null) {
       if (!historyMap.has(period)) {

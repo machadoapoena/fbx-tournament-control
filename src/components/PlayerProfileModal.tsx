@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Player, RatingHistoryEntry, ChessTitle, Gender } from '../types/chess';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Player, RatingHistoryEntry, ChessTitle, Gender, Tournament, TournamentStanding } from '../types/chess';
 import { 
   X, 
   ExternalLink, 
@@ -16,22 +16,25 @@ import {
   Info, 
   ChevronDown, 
   ChevronUp, 
-  Sparkles,
   Activity,
   Layers,
   HelpCircle,
-  Table,
-  Clipboard,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Trophy,
+  Medal,
+  Target,
+  MapPin
 } from 'lucide-react';
 import { parseFideTableData } from '../utils/fideParser';
+import { tournamentService } from '../lib/services/tournamentService';
 
 interface PlayerProfileModalProps {
   player: Player | null;
   isOpen: boolean;
   onClose: () => void;
   onUpdatePlayerHistory?: (playerId: string, cbxHistory: RatingHistoryEntry[], fideHistory: RatingHistoryEntry[]) => void;
+  tournaments?: Tournament[];
 }
 
 type EvolutionSource = 'fide' | 'cbx' | null;
@@ -41,7 +44,8 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   player,
   isOpen,
   onClose,
-  onUpdatePlayerHistory
+  onUpdatePlayerHistory,
+  tournaments
 }) => {
   // Selected evolution system: null initially (only loaded when user explicitly clicks EVOLUÇÃO FIDE or EVOLUÇÃO CBX)
   const [selectedSource, setSelectedSource] = useState<EvolutionSource>(null);
@@ -67,129 +71,58 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   const [historySourceStatus, setHistorySourceStatus] = useState<string | null>(null);
   const [showTableDetails, setShowTableDetails] = useState(false);
 
-  // Manual / Paste Import states for FIDE profile-table_calc
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [rawTableInput, setRawTableInput] = useState('');
-  const [parsedPreview, setParsedPreview] = useState<RatingHistoryEntry[]>([]);
-  const [importStatusMessage, setImportStatusMessage] = useState<string | null>(null);
-
-  const handleProcessImport = () => {
-    if (!rawTableInput.trim()) {
-      setImportStatusMessage('Por favor, cole o HTML ou texto da tabela antes de processar.');
-      return;
-    }
-    const results = parseFideTableData(rawTableInput);
-    if (results.length === 0) {
-      setImportStatusMessage('Nenhum período com rating encontrado. Certifique-se de copiar a tabela de classe "profile-table_calc" de https://ratings.fide.com/profile/.../chart.');
-    } else {
-      setParsedPreview(results);
-      setImportStatusMessage(`✓ ${results.length} períodos identificados com sucesso (Coluna 0: Período, Coluna 1: Std, Coluna 3: Rápido, Coluna 5: Blitz)!`);
-    }
-  };
-
-  const handleApplyImportedHistory = () => {
-    if (parsedPreview.length === 0) return;
-    setLocalFideHistory(parsedPreview);
-    setSelectedSource('fide');
-    setShowTableDetails(true);
-    setHistorySourceStatus(`✓ Histórico FIDE atualizado com ${parsedPreview.length} períodos da tabela profile-table_calc!`);
-    if (onUpdatePlayerHistory && player?.id) {
-      onUpdatePlayerHistory(player.id, localCbxHistory, parsedPreview);
-    }
-    setIsImportModalOpen(false);
-    setRawTableInput('');
-    setParsedPreview([]);
-  };
-
-  const handlePasteFromClipboard = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text) {
-        setRawTableInput(text);
-        const results = parseFideTableData(text);
-        if (results.length > 0) {
-          setParsedPreview(results);
-          setImportStatusMessage(`✓ ${results.length} períodos identificados da área de transferência!`);
-        } else {
-          setImportStatusMessage('Texto colado da área de transferência. Clique em "Processar Tabela" se necessário.');
-        }
-      }
-    } catch {
-      setImportStatusMessage('Não foi possível ler a área de transferência diretamente. Pressione Ctrl+V na caixa de texto abaixo.');
-    }
-  };
-
-  const handleLoadSampleFideData = () => {
-    const sampleHtml = `<table class="profile-table_calc">
-  <thead>
-    <tr>
-      <th>Period</th>
-      <th>STD. RATING</th>
-      <th>STD GMS</th>
-      <th>RPD</th>
-      <th>RPD GMS</th>
-      <th>BLZ</th>
-      <th>BLZ GMS</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr><td>2026-Oct</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
-    <tr><td>2026-Sep</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
-    <tr><td>2026-Aug</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
-    <tr><td>2026-Jul</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
-    <tr><td>2026-Jun</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
-    <tr><td>2026-May</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
-    <tr><td>2026-Apr</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
-    <tr><td>2026-Mar</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
-    <tr><td>2026-Feb</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
-    <tr><td>2026-Jan</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
-    <tr><td>2025-Dec</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
-    <tr><td>2025-Nov</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
-    <tr><td>2025-Oct</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
-    <tr><td>2025-Sep</td><td>1584</td><td>0</td><td>1625</td><td>3</td><td>1600</td><td>0</td></tr>
-    <tr><td>2025-Aug</td><td>1584</td><td>7</td><td>1651</td><td>8</td><td>1600</td><td>10</td></tr>
-    <tr><td>2025-Jul</td><td>1625</td><td>0</td><td>1571</td><td>0</td><td>1587</td><td>0</td></tr>
-    <tr><td>2025-Jun</td><td>1625</td><td>0</td><td>1571</td><td>0</td><td>1587</td><td>0</td></tr>
-    <tr><td>2025-May</td><td>1625</td><td>0</td><td>1571</td><td>0</td><td>1587</td><td>0</td></tr>
-    <tr><td>2025-Apr</td><td>1625</td><td>0</td><td>1571</td><td>4</td><td>1587</td><td>5</td></tr>
-    <tr><td>2025-Mar</td><td>1625</td><td>0</td><td>1537</td><td>0</td><td>1575</td><td>0</td></tr>
-    <tr><td>2025-Feb</td><td>1625</td><td>0</td><td>1537</td><td>0</td><td>1575</td><td>5</td></tr>
-    <tr><td>2025-Jan</td><td>1625</td><td>0</td><td>1537</td><td>0</td><td>1609</td><td>0</td></tr>
-    <tr><td>2024-Dec</td><td>1625</td><td>4</td><td>1537</td><td>4</td><td>1609</td><td>14</td></tr>
-    <tr><td>2024-Nov</td><td>1631</td><td>0</td><td>1520</td><td>0</td><td>1631</td><td>0</td></tr>
-    <tr><td>2024-Oct</td><td>1631</td><td>0</td><td>1520</td><td>0</td><td></td><td></td></tr>
-    <tr><td>2024-Sep</td><td>1631</td><td>0</td><td>1520</td><td>0</td><td></td><td></td></tr>
-    <tr><td>2024-Aug</td><td>1631</td><td>5</td><td>1520</td><td>0</td><td></td><td></td></tr>
-    <tr><td>2024-Jul</td><td></td><td></td><td>1520</td><td>0</td><td></td><td></td></tr>
-    <tr><td>2024-Jun</td><td></td><td></td><td>1520</td><td>4</td><td></td><td></td></tr>
-    <tr><td>2024-May</td><td></td><td></td><td>1529</td><td>0</td><td></td><td></td></tr>
-    <tr><td>2024-Apr</td><td></td><td></td><td>1529</td><td>0</td><td></td><td></td></tr>
-  </tbody>
-</table>`;
-    setRawTableInput(sampleHtml);
-    const parsed = parseFideTableData(sampleHtml);
-    setParsedPreview(parsed);
-    setImportStatusMessage(`✓ Dados de demonstração carregados (${parsed.length} períodos)! Para atualizar o perfil de qualquer enxadrista, copie e cole a tabela profile-table_calc da página oficial da FIDE.`);
-    setIsImportModalOpen(true);
-  };
-
   // Local state for histories so changes/syncing reflect immediately
   const [localCbxHistory, setLocalCbxHistory] = useState<RatingHistoryEntry[]>(player?.cbxHistory || []);
   const [localFideHistory, setLocalFideHistory] = useState<RatingHistoryEntry[]>(player?.fideHistory || []);
+
+  // Compute a stable unique identity key for the player
+  const playerIdentityKey = player
+    ? (player.id || `${player.name}_${player.fideId || player.cbxId || ''}`)
+    : null;
+
+  // Track previous player key and modal open state to only reset selection when opening modal or changing player
+  const activePlayerKeyRef = useRef<string | null>(null);
+  const wasOpenRef = useRef<boolean>(false);
 
   // Update local state when player changes or when modal opens
   // STRICT RULE: Ao entrar na modal, NENHUM histórico de rating deve vir carregado.
   // Somente se o usuário clicar em EVOLUÇÃO FIDE ou EVOLUÇÃO CBX é que vai carregar o gráfico e histórico.
   useEffect(() => {
     if (isOpen && player) {
-      setLocalCbxHistory(player.cbxHistory || []);
-      setLocalFideHistory(player.fideHistory || []);
-      setHistorySourceStatus(null);
+      const isNewlyOpened = !wasOpenRef.current;
+      const isDifferentPlayer = activePlayerKeyRef.current !== null && activePlayerKeyRef.current !== playerIdentityKey;
+
+      if (isNewlyOpened || isDifferentPlayer) {
+        activePlayerKeyRef.current = playerIdentityKey;
+        setSelectedSource(null);
+        setHistorySourceStatus(null);
+        setShowTableDetails(false);
+        setHoveredPoint(null);
+      }
+
+      // Sync local histories with updated player prop without clearing user's selected source
+      if (player.cbxHistory && player.cbxHistory.length > 0) {
+        setLocalCbxHistory(player.cbxHistory);
+      } else if (isNewlyOpened || isDifferentPlayer) {
+        setLocalCbxHistory(player.cbxHistory || []);
+      }
+
+      if (player.fideHistory && player.fideHistory.length > 0) {
+        setLocalFideHistory(player.fideHistory);
+      } else if (isNewlyOpened || isDifferentPlayer) {
+        setLocalFideHistory(player.fideHistory || []);
+      }
+
+      wasOpenRef.current = true;
+    } else if (!isOpen) {
+      wasOpenRef.current = false;
+      activePlayerKeyRef.current = null;
       setSelectedSource(null);
+      setHistorySourceStatus(null);
       setShowTableDetails(false);
       setHoveredPoint(null);
     }
-  }, [isOpen, player]);
+  }, [isOpen, playerIdentityKey, player?.cbxHistory, player?.fideHistory]);
 
   // Calculate age
   const age = useMemo(() => {
@@ -199,6 +132,68 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
     const currentYear = new Date().getFullYear();
     return currentYear - birthYear;
   }, [player?.birthDate]);
+
+  // Fallback to load tournaments directly from Firebase if prop not passed
+  const [firestoreTournaments, setFirestoreTournaments] = useState<Tournament[]>(tournaments || []);
+
+  useEffect(() => {
+    if (tournaments && tournaments.length > 0) {
+      setFirestoreTournaments(tournaments);
+    } else {
+      tournamentService.getTournaments().then(ts => {
+        if (ts) setFirestoreTournaments(ts);
+      }).catch(err => {
+        console.warn('Erro ao carregar torneios do Firebase:', err);
+      });
+    }
+  }, [tournaments]);
+
+  // Extract and format last 3 placements in tournaments with status 'Finalizado'
+  // STRICTLY from Firebase - never from mock or sample files!
+  const recentPlacements = useMemo(() => {
+    if (!player) return [];
+    const sourceList = (tournaments && tournaments.length > 0) ? tournaments : firestoreTournaments;
+
+    // Filter strictly ONLY tournaments from Firebase with status === 'Finalizado' (case-insensitive)
+    const finished = sourceList.filter(t => t.status && t.status.trim().toLowerCase() === 'finalizado');
+
+    const list: Array<{
+      tournament: Tournament;
+      standing: TournamentStanding;
+      date: string;
+    }> = [];
+
+    const pName = (player.name || '').trim().toLowerCase();
+    const pFide = player.fideId ? String(player.fideId).trim() : '';
+    const pCbx = player.cbxId ? String(player.cbxId).trim() : '';
+    const pId = player.id ? String(player.id).trim() : '';
+
+    for (const t of finished) {
+      if (!t.standings || t.standings.length === 0) continue;
+
+      const standing = t.standings.find(s => {
+        if (pId && s.playerId && String(s.playerId).trim() === pId) return true;
+        if (pFide && s.fideId && String(s.fideId).trim() === pFide) return true;
+        if (pCbx && s.cbxId && String(s.cbxId).trim() === pCbx) return true;
+        if (s.playerName && pName && s.playerName.trim().toLowerCase() === pName) return true;
+        return false;
+      });
+
+      if (standing) {
+        list.push({
+          tournament: t,
+          standing,
+          date: t.endDate || t.startDate || '',
+        });
+      }
+    }
+
+    // Sort by date descending (most recent first)
+    list.sort((a, b) => b.date.localeCompare(a.date));
+
+    // Return the last 3 placements
+    return list.slice(0, 3);
+  }, [player, tournaments, firestoreTournaments]);
 
   // Get active history list based on selected source (FIDE vs CBX)
   // Strictly uses real history data from official sources (no fabricated or simulated data)
@@ -266,11 +261,14 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
     return { peak, lowest, current, netGain, count: activeHistory.length };
   }, [activeHistory, selectedModality]);
 
-  // Fetch online history from backend API
-  const handleFetchOnlineHistory = async () => {
+  // Fetch online history from backend API and/or fast client proxies
+  const handleFetchOnlineHistory = async (targetSource?: 'fide' | 'cbx') => {
     if (!player) return;
+    const effectiveSource: 'fide' | 'cbx' = targetSource || (selectedSource === 'cbx' ? 'cbx' : 'fide');
+    setSelectedSource(effectiveSource);
     setIsLoadingHistory(true);
-    setHistorySourceStatus('Consultando servidores CBX e FIDE...');
+    const sourceLabel = effectiveSource === 'fide' ? 'FIDE' : 'CBX';
+    setHistorySourceStatus(`Consultando servidores ${sourceLabel}...`);
 
     try {
       const res = await fetch('/api/player-history', {
@@ -281,6 +279,16 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
           cbxUrl: player.cbxUrl,
           fideId: player.fideId,
           fideUrl: player.fideUrl,
+          targetSource: effectiveSource,
+          playerName: player.name,
+          currentRatings: {
+            fideStandard: player.ratingFideStandard || player.ratingFide,
+            fideRapid: player.ratingFideRapid,
+            fideBlitz: player.ratingFideBlitz,
+            cbxStandard: player.ratingCbxStandard || player.ratingCbx,
+            cbxRapid: player.ratingCbxRapid,
+            cbxBlitz: player.ratingCbxBlitz,
+          },
         }),
       });
 
@@ -303,129 +311,38 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
           fideCount = data.data.fideHistory.length;
         }
 
-        // If backend could not reach FIDE due to IP blocks, try client-side fetch of official profile chart page
-        if (fideCount === 0 && player.fideId) {
+        // Fast parallel client fallback for FIDE (max 3s)
+        if (effectiveSource !== 'cbx' && fideCount === 0 && player.fideId) {
           try {
             const cleanId = String(player.fideId).trim();
             const targetChartUrl = `https://ratings.fide.com/profile/${encodeURIComponent(cleanId)}/chart`;
             const clientProxies = [
               `https://api.allorigins.win/raw?url=${encodeURIComponent(targetChartUrl)}`,
-              `https://api.allorigins.win/get?url=${encodeURIComponent(targetChartUrl)}`,
               `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetChartUrl)}`,
-              `https://thingproxy.freeboard.io/fetch/${targetChartUrl}`,
+              `https://api.allorigins.win/get?url=${encodeURIComponent(targetChartUrl)}`,
             ];
 
-            const normalizePeriodClient = (raw: string): string => {
-              if (!raw) return '';
-              const s = String(raw).trim();
-              const monthsPt: Record<string, string> = {
-                jan: 'Jan', feb: 'Fev', fev: 'Fev', mar: 'Mar', apr: 'Abr', abr: 'Abr',
-                may: 'Mai', mai: 'Mai', jun: 'Jun', jul: 'Jul', aug: 'Ago', ago: 'Ago',
-                sep: 'Set', set: 'Set', oct: 'Out', out: 'Out', nov: 'Nov', dec: 'Dez', dez: 'Dez'
-              };
-              const mNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-
-              const isoMatch = s.match(/^(\d{4})[/-](\d{1,2})(?:[/-]\d{1,2})?$/);
-              if (isoMatch) {
-                const m = parseInt(isoMatch[2], 10);
-                if (m >= 1 && m <= 12) return `${mNames[m - 1]}/${isoMatch[1]}`;
+            const probePromises = clientProxies.map(async (proxyUrl) => {
+              const proxyRes = await fetch(proxyUrl, { signal: AbortSignal.timeout(2800) });
+              if (!proxyRes.ok) return null;
+              let text = await proxyRes.text();
+              if (proxyUrl.includes('/get?url=')) {
+                try {
+                  const j = JSON.parse(text);
+                  if (j.contents) text = j.contents;
+                } catch {}
               }
+              const parsed = parseFideTableData(text);
+              return parsed.length > 0 ? parsed : null;
+            });
 
-              const slashMatch = s.match(/^(\d{1,2})[/-](\d{4})$/);
-              if (slashMatch) {
-                const m = parseInt(slashMatch[1], 10);
-                if (m >= 1 && m <= 12) return `${mNames[m - 1]}/${slashMatch[2]}`;
-              }
-
-              const textMonthMatch = s.match(/([a-zA-Z]{3,})\s*[-/,\s]\s*(\d{4})/) || s.match(/(\d{4})\s*[-/,\s]\s*([a-zA-Z]{3,})/);
-              if (textMonthMatch) {
-                const isYearFirst = /^\d{4}$/.test(textMonthMatch[1]);
-                const y = isYearFirst ? textMonthMatch[1] : textMonthMatch[2];
-                const mText = (isYearFirst ? textMonthMatch[2] : textMonthMatch[1]).toLowerCase().slice(0, 3);
-                return `${monthsPt[mText] || mText.toUpperCase()}/${y}`;
-              }
-
-              const shortYearMatch = s.match(/([a-zA-Z]{3,})\s*[-/,\s]\s*(\d{2})$/);
-              if (shortYearMatch) {
-                const mText = shortYearMatch[1].toLowerCase().slice(0, 3);
-                return `${monthsPt[mText] || mText.toUpperCase()}/20${shortYearMatch[2]}`;
-              }
-
-              return s;
-            };
-
-            const extractNum = (text: string | null | undefined): number | null => {
-              if (!text) return null;
-              const s = text.trim();
-              if (!s || s === '0' || s === '-' || s.toUpperCase() === 'N/A') return null;
-              const num = parseInt(s.replace(/\D/g, ''), 10);
-              return isNaN(num) || num < 400 || num > 3800 ? null : num;
-            };
-
-            for (const proxyUrl of clientProxies) {
-              try {
-                const proxyRes = await fetch(proxyUrl);
-                if (proxyRes.ok) {
-                  let text = await proxyRes.text();
-                  if (proxyUrl.includes('/get?url=')) {
-                    try {
-                      const json = JSON.parse(text);
-                      if (json.contents) text = json.contents;
-                    } catch {}
-                  }
-
-                  // Look for table.profile-table_calc
-                  if (text.includes('profile-table_calc') || text.includes('<table')) {
-                    const doc = new DOMParser().parseFromString(text, 'text/html');
-                    const tbl = doc.querySelector('table.profile-table_calc, table[class*="profile-table_calc"]');
-                    if (tbl) {
-                      const rows = Array.from(tbl.querySelectorAll('tr'));
-                      const tableParsed: RatingHistoryEntry[] = [];
-
-                      rows.forEach((row) => {
-                        const cells = Array.from(row.querySelectorAll('td'));
-                        if (cells.length < 2) return;
-
-                        const rawPeriod = (cells[0]?.textContent || '').trim();
-                        if (!rawPeriod || rawPeriod.toUpperCase().includes('PERIOD')) return;
-                        const period = normalizePeriodClient(rawPeriod);
-                        if (!period) return;
-
-                        let std: number | null = null;
-                        let rap: number | null = null;
-                        let blz: number | null = null;
-
-                        // Layout oficial da tabela profile-table_calc:
-                        // Coluna 0: Período
-                        // Coluna 1: STD. RATING
-                        // Coluna 3: RPD
-                        // Coluna 5: BLZ
-                        if (cells.length >= 6) {
-                          std = extractNum(cells[1]?.textContent);
-                          rap = extractNum(cells[3]?.textContent);
-                          blz = extractNum(cells[5]?.textContent);
-                        } else if (cells.length >= 4) {
-                          std = extractNum(cells[1]?.textContent);
-                          rap = extractNum(cells[2]?.textContent);
-                          blz = extractNum(cells[3]?.textContent);
-                        }
-
-                        if (std !== null || rap !== null || blz !== null) {
-                          tableParsed.push({ period, standard: std, rapid: rap, blitz: blz });
-                        }
-                      });
-
-                      if (tableParsed.length > 0) {
-                        setLocalFideHistory(tableParsed);
-                        currentFideHistory = tableParsed;
-                        fideCount = tableParsed.length;
-                        break;
-                      }
-                    }
-                  }
-                }
-              } catch {
-                // Next proxy
+            const probeResults = await Promise.allSettled(probePromises);
+            for (const r of probeResults) {
+              if (r.status === 'fulfilled' && r.value && r.value.length > 0) {
+                setLocalFideHistory(r.value);
+                currentFideHistory = r.value;
+                fideCount = r.value.length;
+                break;
               }
             }
           } catch {
@@ -433,11 +350,13 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
           }
         }
 
+        setSelectedSource(effectiveSource);
+
         if (cbxCount > 0 || fideCount > 0) {
           const parts: string[] = [];
-          if (cbxCount > 0) parts.push(`${cbxCount} meses CBX`);
-          if (fideCount > 0) parts.push(`${fideCount} períodos FIDE (profile-table_calc)`);
-          setHistorySourceStatus(`Histórico sincronizado com sucesso! (${parts.join(', ')})`);
+          if (cbxCount > 0) parts.push(`${cbxCount} períodos CBX`);
+          if (fideCount > 0) parts.push(`${fideCount} períodos FIDE`);
+          setHistorySourceStatus(`✓ Histórico carregado com sucesso! (${parts.join(', ')})`);
 
           if (onUpdatePlayerHistory && player.id) {
             onUpdatePlayerHistory(
@@ -447,19 +366,43 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
             );
           }
         } else {
-          setHistorySourceStatus(
-            player?.fideId 
-              ? 'A FIDE protege seus servidores via Cloudflare e bloqueia requisições externas. Clique em "Colar Tabela FIDE" para importar a tabela profile-table_calc!' 
-              : 'Nenhum histórico disponível para este jogador nas fontes online.'
-          );
+          if (effectiveSource === 'fide') {
+            setHistorySourceStatus(
+              player?.fideId 
+                ? 'Histórico FIDE indisponível no momento para este perfil.' 
+                : 'Este jogador não possui ID FIDE vinculado.'
+            );
+          } else {
+            setHistorySourceStatus(
+              player?.cbxId
+                ? 'Histórico CBX indisponível no momento para este perfil.'
+                : 'Este jogador não possui ID CBX vinculado.'
+            );
+          }
         }
       } else {
+        setSelectedSource(effectiveSource);
         setHistorySourceStatus('Falha ao obter histórico online.');
       }
-    } catch (err: any) {
+    } catch {
+      setSelectedSource(effectiveSource);
       setHistorySourceStatus('Erro ao conectar ao serviço de histórico.');
     } finally {
       setIsLoadingHistory(false);
+    }
+  };
+
+  // Switch evolution source (FIDE vs CBX) and AUTOMATICALLY fetch if not yet loaded
+  const handleSelectSource = (source: 'fide' | 'cbx') => {
+    setSelectedSource(source);
+    const currentHist = source === 'fide' ? localFideHistory : localCbxHistory;
+    const hasData = source === 'fide'
+      ? (!!player?.fideId || !!player?.ratingFide || !!player?.ratingFideStandard)
+      : (!!player?.cbxId || !!player?.ratingCbx || !!player?.ratingCbxStandard);
+
+    // Se o enxadrista não tem histórico em cache e tem dados de rating/ID, busca automaticamente na hora!
+    if (currentHist.length === 0 && hasData && !isLoadingHistory) {
+      handleFetchOnlineHistory(source);
     }
   };
 
@@ -700,6 +643,200 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
         {/* Modal Scrollable Body */}
         <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
 
+          {/* Seção: Últimas 3 Colocações em Torneios Finalizados */}
+          <div className="bg-white rounded-2xl border border-stone-200/90 shadow-2xs overflow-hidden">
+            <div className="px-5 py-3.5 bg-stone-50/80 border-b border-stone-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-400/30 text-amber-700 flex items-center justify-center shadow-2xs">
+                  <Trophy className="w-4 h-4 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 flex items-center gap-2">
+                    Últimas Colocações em Torneios
+                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-200/80 px-2 py-0.5 rounded-md uppercase tracking-normal">
+                      Torneios Finalizados
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-stone-500 mt-0.5">
+                    Resultados oficiais do enxadrista nas últimas 3 participações concluídas
+                  </p>
+                </div>
+              </div>
+
+              {recentPlacements.length > 0 && (
+                <span className="text-[11px] font-bold text-stone-600 self-start sm:self-auto bg-stone-200/70 px-2 py-0.5 rounded-md">
+                  {recentPlacements.length} {recentPlacements.length === 1 ? 'torneio finalizado' : 'torneios finalizados'}
+                </span>
+              )}
+            </div>
+
+            {recentPlacements.length > 0 ? (
+              <div className="p-4 sm:p-5 bg-gradient-to-b from-stone-50/40 to-white">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                  {recentPlacements.map((item, idx) => {
+                    const rank = item.standing.rank;
+                    const isFirst = rank === 1;
+                    const isSecond = rank === 2;
+                    const isThird = rank === 3;
+
+                    // Modality configuration
+                    const modType = item.tournament.type || 'standard';
+                    const modalityConfig = {
+                      standard: { label: 'Clássico', bg: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+                      rapid: { label: 'Rápido', bg: 'bg-sky-50 text-sky-800 border-sky-200' },
+                      blitz: { label: 'Blitz', bg: 'bg-amber-50 text-amber-800 border-amber-200' },
+                    }[modType] || { label: 'Clássico', bg: 'bg-stone-50 text-stone-800 border-stone-200' };
+
+                    // Date display format: e.g. "Set/2026"
+                    const dateFormatted = (() => {
+                      const d = item.date || item.tournament.startDate;
+                      if (!d) return '';
+                      try {
+                        const parts = d.split('-');
+                        if (parts.length >= 2) {
+                          const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+                          const mIdx = parseInt(parts[1], 10) - 1;
+                          return `${monthNames[mIdx] || parts[1]}/${parts[0]}`;
+                        }
+                      } catch {}
+                      return d;
+                    })();
+
+                    return (
+                      <div
+                        key={item.tournament.id || `placement-${idx}-${item.tournament.name}`}
+                        className={`relative rounded-xl border p-4 transition-all flex flex-col justify-between ${
+                          isFirst
+                            ? 'bg-gradient-to-br from-amber-500/10 via-amber-50/70 to-yellow-500/5 border-amber-300 ring-2 ring-amber-400/20 shadow-xs'
+                            : isSecond
+                            ? 'bg-gradient-to-br from-slate-200/40 via-stone-50 to-slate-100/30 border-slate-300 ring-1 ring-slate-400/20 shadow-xs'
+                            : isThird
+                            ? 'bg-gradient-to-br from-amber-800/10 via-stone-50 to-orange-100/20 border-amber-700/30 ring-1 ring-amber-800/15 shadow-xs'
+                            : 'bg-white border-stone-200 hover:border-stone-300 shadow-2xs'
+                        }`}
+                      >
+                        {/* Top: Placement & Modality Badges */}
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-2.5">
+                            {/* Placement Badge */}
+                            {isFirst ? (
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-xs shadow-2xs">
+                                <Trophy className="w-3.5 h-3.5" />
+                                <span>1º Lugar</span>
+                                <span className="text-[10px] font-bold opacity-90">• Campeão</span>
+                              </div>
+                            ) : isSecond ? (
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-slate-500 to-slate-600 text-white font-black text-xs shadow-2xs">
+                                <Medal className="w-3.5 h-3.5" />
+                                <span>2º Lugar</span>
+                                <span className="text-[10px] font-bold opacity-90">• Vice</span>
+                              </div>
+                            ) : isThird ? (
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-800 to-amber-900 text-white font-black text-xs shadow-2xs">
+                                <Award className="w-3.5 h-3.5" />
+                                <span>3º Lugar</span>
+                                <span className="text-[10px] font-bold opacity-90">• Bronze</span>
+                              </div>
+                            ) : (
+                              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-100 text-stone-800 font-extrabold text-xs border border-stone-200">
+                                <span>{rank}º Lugar</span>
+                              </div>
+                            )}
+
+                            {/* Modality Pill */}
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${modalityConfig.bg}`}>
+                              {modalityConfig.label}
+                            </span>
+                          </div>
+
+                          {/* Tournament Title */}
+                          <h4
+                            className="font-extrabold text-stone-900 text-sm leading-snug line-clamp-2 mt-1 mb-1.5"
+                            title={item.tournament.name}
+                          >
+                            {item.tournament.name}
+                          </h4>
+
+                          {/* Location & Date */}
+                          <div className="flex items-center flex-wrap gap-2 text-[11px] text-stone-500 font-medium">
+                            {(item.tournament.city || item.tournament.state) && (
+                              <span className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-stone-400" />
+                                <span>{[item.tournament.city, item.tournament.state].filter(Boolean).join(', ')}</span>
+                              </span>
+                            )}
+                            {dateFormatted && (
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-stone-400" />
+                                <span>{dateFormatted}</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Bottom: Pontuação & Metric Highlights */}
+                        <div className="mt-3.5 pt-2.5 border-t border-stone-200/70 flex items-center justify-between">
+                          <div>
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                              Pontuação
+                            </div>
+                            <div className="text-base font-black text-stone-900 font-mono mt-0.5">
+                              {item.standing.points}
+                              {item.tournament.rounds ? (
+                                <span className="text-xs font-semibold text-stone-400 ml-1">
+                                  / {item.tournament.rounds} pts
+                                </span>
+                              ) : (
+                                <span className="text-xs font-semibold text-stone-400 ml-1">pts</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            {item.standing.wins !== undefined ? (
+                              <>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                                  Vitórias
+                                </div>
+                                <div className="text-xs font-extrabold text-emerald-700 font-mono mt-0.5">
+                                  {item.standing.wins} vitórias
+                                </div>
+                              </>
+                            ) : item.standing.buchholz !== undefined ? (
+                              <>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                                  Buchholz
+                                </div>
+                                <div className="text-xs font-extrabold text-stone-700 font-mono mt-0.5">
+                                  {item.standing.buchholz}
+                                </div>
+                              </>
+                            ) : (
+                              <div className="inline-flex items-center gap-1 text-[11px] font-bold text-stone-400">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                Finalizado
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="py-7 px-5 text-center bg-stone-50/50">
+                <Trophy className="w-6 h-6 mx-auto text-stone-300 mb-1.5" />
+                <p className="text-xs font-extrabold text-stone-700">
+                  Nenhum torneio finalizado registrado no Firebase para este jogador
+                </p>
+                <p className="text-[11px] text-stone-400 max-w-sm mx-auto mt-0.5">
+                  As colocações oficiais serão exibidas assim que os torneios cadastrados no Firebase forem concluídos com a situação &ldquo;Finalizado&rdquo;.
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* 1. Quick Ratings Summary Cards (FIDE & CBX side by side) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* FIDE Current Ratings Card */}
@@ -724,7 +861,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 </div>
 
                 <button
-                  onClick={() => setSelectedSource('fide')}
+                  onClick={() => handleSelectSource('fide')}
                   className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
                     selectedSource === 'fide'
                       ? 'bg-amber-500 text-white shadow-2xs'
@@ -779,7 +916,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 </div>
 
                 <button
-                  onClick={() => setSelectedSource('cbx')}
+                  onClick={() => handleSelectSource('cbx')}
                   className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
                     selectedSource === 'cbx'
                       ? 'bg-emerald-600 text-white shadow-2xs'
@@ -833,7 +970,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
               <div className="flex items-center gap-1.5 p-1 bg-stone-200/80 rounded-xl">
                 <button
                   type="button"
-                  onClick={() => setSelectedSource('fide')}
+                  onClick={() => handleSelectSource('fide')}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                     selectedSource === 'fide'
                       ? 'bg-amber-500 text-white shadow-xs'
@@ -845,7 +982,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSelectedSource('cbx')}
+                  onClick={() => handleSelectSource('cbx')}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                     selectedSource === 'cbx'
                       ? 'bg-emerald-600 text-white shadow-xs'
@@ -873,7 +1010,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   <button
                     type="button"
-                    onClick={() => setSelectedSource('fide')}
+                    onClick={() => handleSelectSource('fide')}
                     className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition-all cursor-pointer"
                   >
                     <Globe className="w-4 h-4" />
@@ -887,7 +1024,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setSelectedSource('cbx')}
+                    onClick={() => handleSelectSource('cbx')}
                     className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition-all cursor-pointer"
                   >
                     <img src="https://cbx.org.br/files/textos/003659/000965.jpg" alt="CBX" className="w-4 h-4 rounded-xs" />
@@ -1006,24 +1143,46 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
             </div>
 
             {/* SVG Interactive Chart Box */}
-            <div className="p-4 sm:p-6 bg-white relative">
-              {activeHistory.length === 0 ? (
+            <div className="p-4 sm:p-6 bg-white relative min-h-[220px]">
+              {isLoadingHistory ? (
+                <div className="py-14 px-4 text-center max-w-md mx-auto">
+                  <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-500/10 border border-amber-300/40 flex items-center justify-center mb-3">
+                    <RefreshCw className="w-6 h-6 text-amber-600 animate-spin" />
+                  </div>
+                  <p className="text-sm sm:text-base font-extrabold text-stone-900">
+                    Buscando evolução de rating na {selectedSource === 'fide' ? 'FIDE' : 'CBX'}...
+                  </p>
+                  <p className="text-xs text-stone-500 mt-1 max-w-sm mx-auto">
+                    Consultando registros oficiais do enxadrista. Aguarde alguns instantes.
+                  </p>
+                </div>
+              ) : activeHistory.length === 0 ? (
                 <div className="py-12 px-4 text-center max-w-md mx-auto">
                   <Activity className="w-9 h-9 mx-auto text-amber-500 mb-2.5" />
                   <p className="text-sm sm:text-base font-extrabold text-stone-900">
-                    Nenhum histórico disponível para {selectedSource.toUpperCase()}
+                    Nenhum histórico disponível para {selectedSource?.toUpperCase() || ''}
                   </p>
                   {selectedSource === 'fide' ? (
                     <div className="mt-2 space-y-3">
                       <p className="text-xs text-stone-600 leading-relaxed">
-                        A FIDE bloqueia consultas automatizadas via Cloudflare e CORS.
                         {player?.fideId ? (
-                          <> Abra a página oficial da FIDE com seu perfil, copie a tabela <code className="px-1.5 py-0.5 rounded bg-stone-100 font-mono text-[11px] text-amber-800 font-bold">profile-table_calc</code> e cole diretamente aqui:</>
+                          <>Registros de rating da FIDE para o ID <strong className="font-mono">{player.fideId}</strong>.</>
                         ) : (
-                          <> Adicione o ID FIDE do enxadrista para importar o histórico.</>
+                          <>Este enxadrista não possui ID FIDE vinculado.</>
                         )}
                       </p>
                       <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                        {player?.fideId && (
+                          <button
+                            type="button"
+                            onClick={() => handleFetchOnlineHistory('fide')}
+                            disabled={isLoadingHistory}
+                            className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHistory ? 'animate-spin' : ''}`} />
+                            <span>Buscar Novamente</span>
+                          </button>
+                        )}
                         {player?.fideId && (
                           <a
                             href={`https://ratings.fide.com/profile/${player.fideId}/chart`}
@@ -1035,28 +1194,40 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                             <span>Abrir Página FIDE</span>
                           </a>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => setIsImportModalOpen(true)}
-                          className="px-4 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-colors cursor-pointer"
-                        >
-                          <Table className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Colar Tabela profile-table_calc</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleLoadSampleFideData}
-                          className="px-3 py-2 rounded-xl border border-stone-300 hover:bg-stone-100 text-stone-700 font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                        >
-                          <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                          <span>Exemplo (ID 22747281)</span>
-                        </button>
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-stone-500 mt-1">
-                      O enxadrista ainda não possui pontuação ou registro cadastrado nesta federação.
-                    </p>
+                    <div className="mt-2 space-y-3">
+                      <p className="text-xs text-stone-600 leading-relaxed">
+                        {player?.cbxId
+                          ? `Registros de rating da CBX para o ID ${player.cbxId}.`
+                          : 'Este enxadrista não possui ID CBX cadastrado.'}
+                      </p>
+                      <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                        {player?.cbxId && (
+                          <button
+                            type="button"
+                            onClick={() => handleFetchOnlineHistory('cbx')}
+                            disabled={isLoadingHistory}
+                            className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHistory ? 'animate-spin' : ''}`} />
+                            <span>Buscar Novamente</span>
+                          </button>
+                        )}
+                        {player?.cbxId && (
+                          <a
+                            href={`https://www.cbx.org.br/jogador/${player.cbxId}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-3 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-950 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>Abrir Perfil CBX</span>
+                          </a>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               ) : (
@@ -1357,25 +1528,13 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
 
                 <button
                   type="button"
-                  onClick={handleFetchOnlineHistory}
+                  onClick={() => handleFetchOnlineHistory(selectedSource || undefined)}
                   disabled={isLoadingHistory}
                   className="px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHistory ? 'animate-spin' : ''}`} />
                   <span>{isLoadingHistory ? 'Buscando...' : 'Atualizar Online'}</span>
                 </button>
-
-                {selectedSource === 'fide' && (
-                  <button
-                    type="button"
-                    onClick={() => setIsImportModalOpen(true)}
-                    className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                    title="Importar ou colar tabela profile-table_calc da FIDE"
-                  >
-                    <Table className="w-3.5 h-3.5 text-amber-700" />
-                    <span>Colar Tabela FIDE</span>
-                  </button>
-                )}
 
                 {selectedSource === 'fide' && player.fideId && (
                   <a
@@ -1386,6 +1545,18 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                     title="Ver página oficial de gráfico da FIDE em nova aba"
                   >
                     <span>Gráfico Oficial FIDE</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+                {selectedSource === 'cbx' && player.cbxId && (
+                  <a
+                    href={`https://www.cbx.org.br/jogador/${player.cbxId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Ver página de jogador da CBX em nova aba"
+                  >
+                    <span>Perfil CBX</span>
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 )}
@@ -1500,206 +1671,6 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
           </button>
         </div>
       </div>
-
-      {/* Sub-Modal: Import FIDE Profile Table (profile-table_calc) */}
-      {isImportModalOpen && (
-        <div className="fixed inset-0 z-60 bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col border border-stone-200 overflow-hidden">
-            {/* Header */}
-            <div className="px-6 py-4 bg-stone-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-amber-500/20 rounded-lg text-amber-400">
-                  <Table className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold">Importar Tabela da FIDE (profile-table_calc)</h3>
-                  <p className="text-xs text-stone-400">
-                    {player?.name} {player?.fideId ? `(ID FIDE: ${player.fideId})` : ''}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsImportModalOpen(false)}
-                className="p-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="p-6 overflow-y-auto space-y-4 flex-1">
-              {/* Instructions */}
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-950 space-y-2">
-                <div className="font-bold flex items-center gap-1.5 text-amber-900 text-sm">
-                  <Info className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Como obter os dados oficiais:</span>
-                </div>
-                <ol className="list-decimal list-inside space-y-1 text-stone-700">
-                  <li>
-                    Acesse a página do gráfico oficial:{' '}
-                    {player?.fideId ? (
-                      <a
-                        href={`https://ratings.fide.com/profile/${player.fideId}/chart`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 font-bold text-amber-900 underline hover:text-amber-700"
-                      >
-                        ratings.fide.com/profile/{player.fideId}/chart
-                        <ExternalLink className="w-3 h-3 inline" />
-                      </a>
-                    ) : (
-                      <span className="font-mono">ratings.fide.com/profile/[FIDE_ID]/chart</span>
-                    )}
-                  </li>
-                  <li>Aguarde o navegador renderizar a tabela com classe <code className="bg-amber-100/80 px-1 py-0.5 rounded font-mono font-bold text-[11px]">profile-table_calc</code>.</li>
-                  <li>
-                    Selecione a tabela inteira (ou copie o código HTML da página) e cole na caixa abaixo.
-                  </li>
-                </ol>
-                <div className="pt-1.5 border-t border-amber-200/60 text-[11px] text-amber-900 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono">
-                  <span><strong>Col 0:</strong> Período</span>
-                  <span><strong>Col 1:</strong> STD Rating</span>
-                  <span><strong>Col 3:</strong> RPD (Rápido)</span>
-                  <span><strong>Col 5:</strong> BLZ (Blitz)</span>
-                </div>
-              </div>
-
-              {/* Action Buttons: Paste, Sample, Process */}
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handlePasteFromClipboard}
-                    className="px-3 py-1.5 rounded-lg border border-stone-300 hover:bg-stone-100 text-stone-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <Clipboard className="w-3.5 h-3.5 text-stone-600" />
-                    <span>Colar da Área de Transferência</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleLoadSampleFideData}
-                    className="px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50/50 hover:bg-amber-100 text-amber-900 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Carregar Demonstração (ID 22747281)</span>
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleProcessImport}
-                  className="px-4 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Processar Tabela</span>
-                </button>
-              </div>
-
-              {/* Textarea */}
-              <div>
-                <textarea
-                  value={rawTableInput}
-                  onChange={(e) => {
-                    setRawTableInput(e.target.value);
-                    if (e.target.value) {
-                      const res = parseFideTableData(e.target.value);
-                      if (res.length > 0) {
-                        setParsedPreview(res);
-                        setImportStatusMessage(`✓ ${res.length} períodos identificados automaticamente!`);
-                      }
-                    }
-                  }}
-                  rows={7}
-                  placeholder={`Cole aqui o código HTML da tabela (<table class="profile-table_calc">...) ou o texto selecionado diretamente da página FIDE...`}
-                  className="w-full text-xs font-mono p-3 border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none resize-y"
-                />
-              </div>
-
-              {/* Status Message */}
-              {importStatusMessage && (
-                <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
-                  parsedPreview.length > 0 
-                    ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' 
-                    : 'bg-stone-100 text-stone-800 border border-stone-200'
-                }`}>
-                  {parsedPreview.length > 0 ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  ) : (
-                    <Info className="w-4 h-4 text-stone-500 shrink-0" />
-                  )}
-                  <span>{importStatusMessage}</span>
-                </div>
-              )}
-
-              {/* Parsed Preview Table */}
-              {parsedPreview.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-stone-700">
-                    <span>Prévia dos dados extraídos ({parsedPreview.length} períodos):</span>
-                    <span className="text-[11px] text-stone-500 font-mono">
-                      Coluna 0, 1, 3 e 5 mapeadas
-                    </span>
-                  </div>
-                  <div className="border border-stone-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead className="bg-stone-100 sticky top-0 border-b border-stone-200 text-[11px] font-bold text-stone-600 uppercase font-mono">
-                        <tr>
-                          <th className="py-2 px-3">Período (Col 0)</th>
-                          <th className="py-2 px-3 text-emerald-800">Standard (Col 1)</th>
-                          <th className="py-2 px-3 text-sky-800">Rápido (Col 3)</th>
-                          <th className="py-2 px-3 text-amber-800">Blitz (Col 5)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone-100 font-mono text-[11px]">
-                        {parsedPreview.slice(0, 10).map((row, idx) => (
-                          <tr key={idx} className="hover:bg-stone-50">
-                            <td className="py-1.5 px-3 font-semibold text-stone-900">{row.period}</td>
-                            <td className="py-1.5 px-3 text-emerald-700 font-bold">{row.standard || '-'}</td>
-                            <td className="py-1.5 px-3 text-sky-700 font-bold">{row.rapid || '-'}</td>
-                            <td className="py-1.5 px-3 text-amber-700 font-bold">{row.blitz || '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {parsedPreview.length > 10 && (
-                    <p className="text-[11px] text-stone-500 text-center">
-                      ... e mais {parsedPreview.length - 10} períodos que serão salvos no histórico.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="px-6 py-4 bg-stone-50 border-t border-stone-200 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsImportModalOpen(false);
-                  setRawTableInput('');
-                  setParsedPreview([]);
-                  setImportStatusMessage(null);
-                }}
-                className="px-4 py-2 border border-stone-300 hover:bg-stone-100 text-stone-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-
-              <button
-                type="button"
-                onClick={handleApplyImportedHistory}
-                disabled={parsedPreview.length === 0}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <Check className="w-4 h-4" />
-                <span>Salvar {parsedPreview.length > 0 ? `(${parsedPreview.length})` : ''} no Histórico e Atualizar Gráfico</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
