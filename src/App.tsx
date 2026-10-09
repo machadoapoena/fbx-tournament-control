@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Player, Tournament } from './types/chess';
+import { Player, Tournament, RatingHistoryEntry } from './types/chess';
 import { playerService } from './lib/services/playerService';
 import { tournamentService } from './lib/services/tournamentService';
 import { testConnection } from './lib/firebase';
@@ -174,6 +174,21 @@ export default function App() {
       showToast(`Jogador "${name}" excluído com sucesso.`, 'info');
     } catch (error) {
       showToast('Erro ao excluir o jogador do Firebase.', 'error');
+    }
+  };
+
+  const handleUpdatePlayerHistory = async (
+    playerId: string, 
+    cbxHistory: RatingHistoryEntry[], 
+    fideHistory: RatingHistoryEntry[]
+  ) => {
+    try {
+      await playerService.updatePlayer(playerId, { cbxHistory, fideHistory });
+      setSelectedProfilePlayer(prev => (prev && prev.id === playerId ? { ...prev, cbxHistory, fideHistory } : prev));
+      showToast('Histórico oficial do jogador salvo com sucesso!', 'success');
+    } catch (error) {
+      console.error('Erro ao atualizar histórico do jogador:', error);
+      showToast('Erro ao salvar histórico do jogador.', 'error');
     }
   };
 
@@ -374,6 +389,7 @@ export default function App() {
           player={selectedProfilePlayer}
           isOpen={!!selectedProfilePlayer}
           onClose={() => setSelectedProfilePlayer(null)}
+          onUpdatePlayerHistory={handleUpdatePlayerHistory}
         />
       )}
     </div>

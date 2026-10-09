@@ -19,8 +19,13 @@ import {
   Sparkles,
   Activity,
   Layers,
-  HelpCircle
+  HelpCircle,
+  Table,
+  Clipboard,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
+import { parseFideTableData } from '../utils/fideParser';
 
 interface PlayerProfileModalProps {
   player: Player | null;
@@ -29,7 +34,7 @@ interface PlayerProfileModalProps {
   onUpdatePlayerHistory?: (playerId: string, cbxHistory: RatingHistoryEntry[], fideHistory: RatingHistoryEntry[]) => void;
 }
 
-type EvolutionSource = 'fide' | 'cbx';
+type EvolutionSource = 'fide' | 'cbx' | null;
 type ModalityFilter = 'all' | 'standard' | 'rapid' | 'blitz';
 
 export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
@@ -38,16 +43,14 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   onClose,
   onUpdatePlayerHistory
 }) => {
-  // Selected evolution system: FIDE or CBX
-  const [selectedSource, setSelectedSource] = useState<EvolutionSource>(() => {
-    // Default to FIDE if player has FIDE rating/ID, otherwise CBX
-    if ((player?.ratingFide || player?.fideId) && !(player?.ratingCbx || player?.cbxId)) return 'fide';
-    if ((player?.ratingCbx || player?.cbxId) && !(player?.ratingFide || player?.fideId)) return 'cbx';
-    return 'fide';
-  });
+  // Selected evolution system: null initially (only loaded when user explicitly clicks EVOLUÇÃO FIDE or EVOLUÇÃO CBX)
+  const [selectedSource, setSelectedSource] = useState<EvolutionSource>(null);
 
   // Selected modality filter: all 3 or specific
   const [selectedModality, setSelectedModality] = useState<ModalityFilter>('all');
+
+  // Option to hide dots on the chart when rating is equal to previous (clean line without balls on identical ratings)
+  const [hideEqualDots, setHideEqualDots] = useState(true);
 
   // Hovered data point for chart tooltip
   const [hoveredPoint, setHoveredPoint] = useState<{
@@ -64,24 +67,129 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   const [historySourceStatus, setHistorySourceStatus] = useState<string | null>(null);
   const [showTableDetails, setShowTableDetails] = useState(false);
 
+  // Manual / Paste Import states for FIDE profile-table_calc
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [rawTableInput, setRawTableInput] = useState('');
+  const [parsedPreview, setParsedPreview] = useState<RatingHistoryEntry[]>([]);
+  const [importStatusMessage, setImportStatusMessage] = useState<string | null>(null);
+
+  const handleProcessImport = () => {
+    if (!rawTableInput.trim()) {
+      setImportStatusMessage('Por favor, cole o HTML ou texto da tabela antes de processar.');
+      return;
+    }
+    const results = parseFideTableData(rawTableInput);
+    if (results.length === 0) {
+      setImportStatusMessage('Nenhum período com rating encontrado. Certifique-se de copiar a tabela de classe "profile-table_calc" de https://ratings.fide.com/profile/.../chart.');
+    } else {
+      setParsedPreview(results);
+      setImportStatusMessage(`✓ ${results.length} períodos identificados com sucesso (Coluna 0: Período, Coluna 1: Std, Coluna 3: Rápido, Coluna 5: Blitz)!`);
+    }
+  };
+
+  const handleApplyImportedHistory = () => {
+    if (parsedPreview.length === 0) return;
+    setLocalFideHistory(parsedPreview);
+    setSelectedSource('fide');
+    setShowTableDetails(true);
+    setHistorySourceStatus(`✓ Histórico FIDE atualizado com ${parsedPreview.length} períodos da tabela profile-table_calc!`);
+    if (onUpdatePlayerHistory && player?.id) {
+      onUpdatePlayerHistory(player.id, localCbxHistory, parsedPreview);
+    }
+    setIsImportModalOpen(false);
+    setRawTableInput('');
+    setParsedPreview([]);
+  };
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setRawTableInput(text);
+        const results = parseFideTableData(text);
+        if (results.length > 0) {
+          setParsedPreview(results);
+          setImportStatusMessage(`✓ ${results.length} períodos identificados da área de transferência!`);
+        } else {
+          setImportStatusMessage('Texto colado da área de transferência. Clique em "Processar Tabela" se necessário.');
+        }
+      }
+    } catch {
+      setImportStatusMessage('Não foi possível ler a área de transferência diretamente. Pressione Ctrl+V na caixa de texto abaixo.');
+    }
+  };
+
+  const handleLoadSampleFideData = () => {
+    const sampleHtml = `<table class="profile-table_calc">
+  <thead>
+    <tr>
+      <th>Period</th>
+      <th>STD. RATING</th>
+      <th>STD GMS</th>
+      <th>RPD</th>
+      <th>RPD GMS</th>
+      <th>BLZ</th>
+      <th>BLZ GMS</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>2026-Oct</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
+    <tr><td>2026-Sep</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
+    <tr><td>2026-Aug</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
+    <tr><td>2026-Jul</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
+    <tr><td>2026-Jun</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
+    <tr><td>2026-May</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
+    <tr><td>2026-Apr</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
+    <tr><td>2026-Mar</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
+    <tr><td>2026-Feb</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
+    <tr><td>2026-Jan</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
+    <tr><td>2025-Dec</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
+    <tr><td>2025-Nov</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
+    <tr><td>2025-Oct</td><td>1584</td><td>0</td><td>1625</td><td>0</td><td>1600</td><td>0</td></tr>
+    <tr><td>2025-Sep</td><td>1584</td><td>0</td><td>1625</td><td>3</td><td>1600</td><td>0</td></tr>
+    <tr><td>2025-Aug</td><td>1584</td><td>7</td><td>1651</td><td>8</td><td>1600</td><td>10</td></tr>
+    <tr><td>2025-Jul</td><td>1625</td><td>0</td><td>1571</td><td>0</td><td>1587</td><td>0</td></tr>
+    <tr><td>2025-Jun</td><td>1625</td><td>0</td><td>1571</td><td>0</td><td>1587</td><td>0</td></tr>
+    <tr><td>2025-May</td><td>1625</td><td>0</td><td>1571</td><td>0</td><td>1587</td><td>0</td></tr>
+    <tr><td>2025-Apr</td><td>1625</td><td>0</td><td>1571</td><td>4</td><td>1587</td><td>5</td></tr>
+    <tr><td>2025-Mar</td><td>1625</td><td>0</td><td>1537</td><td>0</td><td>1575</td><td>0</td></tr>
+    <tr><td>2025-Feb</td><td>1625</td><td>0</td><td>1537</td><td>0</td><td>1575</td><td>5</td></tr>
+    <tr><td>2025-Jan</td><td>1625</td><td>0</td><td>1537</td><td>0</td><td>1609</td><td>0</td></tr>
+    <tr><td>2024-Dec</td><td>1625</td><td>4</td><td>1537</td><td>4</td><td>1609</td><td>14</td></tr>
+    <tr><td>2024-Nov</td><td>1631</td><td>0</td><td>1520</td><td>0</td><td>1631</td><td>0</td></tr>
+    <tr><td>2024-Oct</td><td>1631</td><td>0</td><td>1520</td><td>0</td><td></td><td></td></tr>
+    <tr><td>2024-Sep</td><td>1631</td><td>0</td><td>1520</td><td>0</td><td></td><td></td></tr>
+    <tr><td>2024-Aug</td><td>1631</td><td>5</td><td>1520</td><td>0</td><td></td><td></td></tr>
+    <tr><td>2024-Jul</td><td></td><td></td><td>1520</td><td>0</td><td></td><td></td></tr>
+    <tr><td>2024-Jun</td><td></td><td></td><td>1520</td><td>4</td><td></td><td></td></tr>
+    <tr><td>2024-May</td><td></td><td></td><td>1529</td><td>0</td><td></td><td></td></tr>
+    <tr><td>2024-Apr</td><td></td><td></td><td>1529</td><td>0</td><td></td><td></td></tr>
+  </tbody>
+</table>`;
+    setRawTableInput(sampleHtml);
+    const parsed = parseFideTableData(sampleHtml);
+    setParsedPreview(parsed);
+    setImportStatusMessage(`✓ Dados de demonstração carregados (${parsed.length} períodos)! Para atualizar o perfil de qualquer enxadrista, copie e cole a tabela profile-table_calc da página oficial da FIDE.`);
+    setIsImportModalOpen(true);
+  };
+
   // Local state for histories so changes/syncing reflect immediately
   const [localCbxHistory, setLocalCbxHistory] = useState<RatingHistoryEntry[]>(player?.cbxHistory || []);
   const [localFideHistory, setLocalFideHistory] = useState<RatingHistoryEntry[]>(player?.fideHistory || []);
 
-  // Update local state when player changes
+  // Update local state when player changes or when modal opens
+  // STRICT RULE: Ao entrar na modal, NENHUM histórico de rating deve vir carregado.
+  // Somente se o usuário clicar em EVOLUÇÃO FIDE ou EVOLUÇÃO CBX é que vai carregar o gráfico e histórico.
   useEffect(() => {
-    if (player) {
+    if (isOpen && player) {
       setLocalCbxHistory(player.cbxHistory || []);
       setLocalFideHistory(player.fideHistory || []);
       setHistorySourceStatus(null);
-      // If player has only CBX or only FIDE, switch source automatically
-      if ((player.ratingCbx || player.cbxId) && !player.ratingFide && !player.fideId) {
-        setSelectedSource('cbx');
-      } else if ((player.ratingFide || player.fideId) && !player.ratingCbx && !player.cbxId) {
-        setSelectedSource('fide');
-      }
+      setSelectedSource(null);
+      setShowTableDetails(false);
+      setHoveredPoint(null);
     }
-  }, [player]);
+  }, [isOpen, player]);
 
   // Calculate age
   const age = useMemo(() => {
@@ -95,6 +203,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   // Get active history list based on selected source (FIDE vs CBX)
   // Strictly uses real history data from official sources (no fabricated or simulated data)
   const activeHistory: RatingHistoryEntry[] = useMemo(() => {
+    if (!selectedSource) return [];
     const isFide = selectedSource === 'fide';
     const explicitHistory = isFide ? localFideHistory : localCbxHistory;
 
@@ -179,132 +288,139 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
       if (data.success) {
         let cbxCount = 0;
         let fideCount = 0;
+        let currentCbxHistory: RatingHistoryEntry[] = localCbxHistory;
+        let currentFideHistory: RatingHistoryEntry[] = localFideHistory;
 
         if (data.data?.cbxHistory && data.data.cbxHistory.length > 0) {
           setLocalCbxHistory(data.data.cbxHistory);
+          currentCbxHistory = data.data.cbxHistory;
           cbxCount = data.data.cbxHistory.length;
         }
 
         if (data.data?.fideHistory && data.data.fideHistory.length > 0) {
           setLocalFideHistory(data.data.fideHistory);
+          currentFideHistory = data.data.fideHistory;
           fideCount = data.data.fideHistory.length;
         }
 
-        // If backend could not reach FIDE due to IP blocks, try client-side fetch of official a_chart_data.phtml
+        // If backend could not reach FIDE due to IP blocks, try client-side fetch of official profile chart page
         if (fideCount === 0 && player.fideId) {
           try {
             const cleanId = String(player.fideId).trim();
-            const fideAjaxUrl = `https://ratings.fide.com/a_chart_data.phtml?event=${encodeURIComponent(cleanId)}&period=0`;
+            const targetChartUrl = `https://ratings.fide.com/profile/${encodeURIComponent(cleanId)}/chart`;
             const clientProxies = [
-              `https://api.allorigins.win/raw?url=${encodeURIComponent(fideAjaxUrl)}`,
-              `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(fideAjaxUrl)}`,
+              `https://api.allorigins.win/raw?url=${encodeURIComponent(targetChartUrl)}`,
+              `https://api.allorigins.win/get?url=${encodeURIComponent(targetChartUrl)}`,
+              `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetChartUrl)}`,
+              `https://thingproxy.freeboard.io/fetch/${targetChartUrl}`,
             ];
+
+            const normalizePeriodClient = (raw: string): string => {
+              if (!raw) return '';
+              const s = String(raw).trim();
+              const monthsPt: Record<string, string> = {
+                jan: 'Jan', feb: 'Fev', fev: 'Fev', mar: 'Mar', apr: 'Abr', abr: 'Abr',
+                may: 'Mai', mai: 'Mai', jun: 'Jun', jul: 'Jul', aug: 'Ago', ago: 'Ago',
+                sep: 'Set', set: 'Set', oct: 'Out', out: 'Out', nov: 'Nov', dec: 'Dez', dez: 'Dez'
+              };
+              const mNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+              const isoMatch = s.match(/^(\d{4})[/-](\d{1,2})(?:[/-]\d{1,2})?$/);
+              if (isoMatch) {
+                const m = parseInt(isoMatch[2], 10);
+                if (m >= 1 && m <= 12) return `${mNames[m - 1]}/${isoMatch[1]}`;
+              }
+
+              const slashMatch = s.match(/^(\d{1,2})[/-](\d{4})$/);
+              if (slashMatch) {
+                const m = parseInt(slashMatch[1], 10);
+                if (m >= 1 && m <= 12) return `${mNames[m - 1]}/${slashMatch[2]}`;
+              }
+
+              const textMonthMatch = s.match(/([a-zA-Z]{3,})\s*[-/,\s]\s*(\d{4})/) || s.match(/(\d{4})\s*[-/,\s]\s*([a-zA-Z]{3,})/);
+              if (textMonthMatch) {
+                const isYearFirst = /^\d{4}$/.test(textMonthMatch[1]);
+                const y = isYearFirst ? textMonthMatch[1] : textMonthMatch[2];
+                const mText = (isYearFirst ? textMonthMatch[2] : textMonthMatch[1]).toLowerCase().slice(0, 3);
+                return `${monthsPt[mText] || mText.toUpperCase()}/${y}`;
+              }
+
+              const shortYearMatch = s.match(/([a-zA-Z]{3,})\s*[-/,\s]\s*(\d{2})$/);
+              if (shortYearMatch) {
+                const mText = shortYearMatch[1].toLowerCase().slice(0, 3);
+                return `${monthsPt[mText] || mText.toUpperCase()}/20${shortYearMatch[2]}`;
+              }
+
+              return s;
+            };
+
+            const extractNum = (text: string | null | undefined): number | null => {
+              if (!text) return null;
+              const s = text.trim();
+              if (!s || s === '0' || s === '-' || s.toUpperCase() === 'N/A') return null;
+              const num = parseInt(s.replace(/\D/g, ''), 10);
+              return isNaN(num) || num < 400 || num > 3800 ? null : num;
+            };
 
             for (const proxyUrl of clientProxies) {
               try {
                 const proxyRes = await fetch(proxyUrl);
                 if (proxyRes.ok) {
-                  const text = await proxyRes.text();
-                  let rawItems: any[] = [];
-                  try {
-                    rawItems = JSON.parse(text);
-                  } catch {
-                    const m = text.match(/\[\s*\{[\s\S]*?(?:date_2|rapid_rtng|blitz_rtng)[\s\S]*?\}\s*\]/);
-                    if (m) rawItems = JSON.parse(m[0]);
-                  }
-
-                  // Check if response contains rendered HTML with table.profile-table_calc
-                  if (text.includes('profile-table_calc') || text.includes('<table')) {
+                  let text = await proxyRes.text();
+                  if (proxyUrl.includes('/get?url=')) {
                     try {
-                      const doc = new DOMParser().parseFromString(text, 'text/html');
-                      const tbl = doc.querySelector('table.profile-table_calc, table[class*="profile-table_calc"], table');
-                      if (tbl) {
-                        const rows = Array.from(tbl.querySelectorAll('tr'));
-                        if (rows.length >= 2) {
-                          let periodIdx = 0;
-                          let stdIdx = -1;
-                          let rapIdx = -1;
-                          let blzIdx = -1;
-
-                          const headerCells = Array.from(rows[0].querySelectorAll('th, td'));
-                          headerCells.forEach((c, idx) => {
-                            const txt = (c.textContent || '').trim().toUpperCase().replace(/[\.\s]+/g, ' ');
-                            if (txt.includes('GMS') || txt.includes('GAME')) return;
-                            if (txt.includes('PERIOD')) periodIdx = idx;
-                            else if (txt.includes('STD RATING') || txt === 'STD') stdIdx = idx;
-                            else if (txt.includes('RPD') || txt.includes('RAPID')) rapIdx = idx;
-                            else if (txt.includes('BLZ') || txt.includes('BLITZ')) blzIdx = idx;
-                          });
-
-                          const tableParsed: RatingHistoryEntry[] = [];
-                          for (let i = 1; i < rows.length; i++) {
-                            const cells = Array.from(rows[i].querySelectorAll('td'));
-                            if (cells.length === 0) continue;
-                            const pText = (cells[periodIdx]?.textContent || '').trim();
-                            if (!pText || !/\d{2,4}/.test(pText)) continue;
-
-                            const extractN = (idx: number) => {
-                              if (idx < 0 || idx >= cells.length) return null;
-                              const num = parseInt((cells[idx].textContent || '').replace(/\D/g, ''), 10);
-                              return isNaN(num) || num < 400 || num > 3800 ? null : num;
-                            };
-
-                            let std = stdIdx !== -1 ? extractN(stdIdx) : null;
-                            let rap = rapIdx !== -1 ? extractN(rapIdx) : null;
-                            let blz = blzIdx !== -1 ? extractN(blzIdx) : null;
-
-                            if (stdIdx === -1 && cells.length >= 7) {
-                              std = extractN(1);
-                              rap = extractN(3);
-                              blz = extractN(5);
-                            }
-
-                            if (std || rap || blz) {
-                              tableParsed.push({ period: pText, standard: std, rapid: rap, blitz: blz });
-                            }
-                          }
-
-                          if (tableParsed.length > 0) {
-                            setLocalFideHistory(tableParsed);
-                            fideCount = tableParsed.length;
-                            break;
-                          }
-                        }
-                      }
+                      const json = JSON.parse(text);
+                      if (json.contents) text = json.contents;
                     } catch {}
                   }
 
-                  if (Array.isArray(rawItems) && rawItems.length > 0) {
-                    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-                    const clientParsed: RatingHistoryEntry[] = rawItems
-                      .map((item) => {
-                        const raw = String(item.date_2 || item.date_1 || item.date || item.period || '').trim();
-                        let period = raw;
-                        const match = raw.match(/^(\d{4})-(\d{2})(?:-\d{2})?$/);
-                        if (match) {
-                          const mIdx = parseInt(match[2], 10) - 1;
-                          period = `${months[mIdx] || match[2]}/${match[1]}`;
+                  // Look for table.profile-table_calc
+                  if (text.includes('profile-table_calc') || text.includes('<table')) {
+                    const doc = new DOMParser().parseFromString(text, 'text/html');
+                    const tbl = doc.querySelector('table.profile-table_calc, table[class*="profile-table_calc"]');
+                    if (tbl) {
+                      const rows = Array.from(tbl.querySelectorAll('tr'));
+                      const tableParsed: RatingHistoryEntry[] = [];
+
+                      rows.forEach((row) => {
+                        const cells = Array.from(row.querySelectorAll('td'));
+                        if (cells.length < 2) return;
+
+                        const rawPeriod = (cells[0]?.textContent || '').trim();
+                        if (!rawPeriod || rawPeriod.toUpperCase().includes('PERIOD')) return;
+                        const period = normalizePeriodClient(rawPeriod);
+                        if (!period) return;
+
+                        let std: number | null = null;
+                        let rap: number | null = null;
+                        let blz: number | null = null;
+
+                        // Layout oficial da tabela profile-table_calc:
+                        // Coluna 0: Período
+                        // Coluna 1: STD. RATING
+                        // Coluna 3: RPD
+                        // Coluna 5: BLZ
+                        if (cells.length >= 6) {
+                          std = extractNum(cells[1]?.textContent);
+                          rap = extractNum(cells[3]?.textContent);
+                          blz = extractNum(cells[5]?.textContent);
+                        } else if (cells.length >= 4) {
+                          std = extractNum(cells[1]?.textContent);
+                          rap = extractNum(cells[2]?.textContent);
+                          blz = extractNum(cells[3]?.textContent);
                         }
 
-                        const parseNum = (v: any) => {
-                          if (!v) return null;
-                          const n = parseInt(String(v).replace(/\D/g, ''), 10);
-                          return isNaN(n) || n < 400 || n > 3800 ? null : n;
-                        };
+                        if (std !== null || rap !== null || blz !== null) {
+                          tableParsed.push({ period, standard: std, rapid: rap, blitz: blz });
+                        }
+                      });
 
-                        return {
-                          period,
-                          standard: parseNum(item.rating),
-                          rapid: parseNum(item.rapid_rtng || item.rapid),
-                          blitz: parseNum(item.blitz_rtng || item.blitz),
-                        };
-                      })
-                      .filter((entry) => entry.period && (entry.standard || entry.rapid || entry.blitz));
-
-                    if (clientParsed.length > 0) {
-                      setLocalFideHistory(clientParsed);
-                      fideCount = clientParsed.length;
-                      break;
+                      if (tableParsed.length > 0) {
+                        setLocalFideHistory(tableParsed);
+                        currentFideHistory = tableParsed;
+                        fideCount = tableParsed.length;
+                        break;
+                      }
                     }
                   }
                 }
@@ -318,18 +434,24 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
         }
 
         if (cbxCount > 0 || fideCount > 0) {
-          setHistorySourceStatus(
-            `Histórico sincronizado com sucesso! (${cbxCount} meses CBX, ${fideCount} registros FIDE via a_chart_data)`
-          );
+          const parts: string[] = [];
+          if (cbxCount > 0) parts.push(`${cbxCount} meses CBX`);
+          if (fideCount > 0) parts.push(`${fideCount} períodos FIDE (profile-table_calc)`);
+          setHistorySourceStatus(`Histórico sincronizado com sucesso! (${parts.join(', ')})`);
+
           if (onUpdatePlayerHistory && player.id) {
             onUpdatePlayerHistory(
               player.id, 
-              data.data?.cbxHistory || localCbxHistory, 
-              fideCount > 0 ? (localFideHistory.length > 0 ? localFideHistory : data.data?.fideHistory) : localFideHistory
+              currentCbxHistory, 
+              currentFideHistory
             );
           }
         } else {
-          setHistorySourceStatus('Não foram encontrados novos registros online. Usando histórico estimado.');
+          setHistorySourceStatus(
+            player?.fideId 
+              ? 'A FIDE protege seus servidores via Cloudflare e bloqueia requisições externas. Clique em "Colar Tabela FIDE" para importar a tabela profile-table_calc!' 
+              : 'Nenhum histórico disponível para este jogador nas fontes online.'
+          );
         }
       } else {
         setHistorySourceStatus('Falha ao obter histórico online.');
@@ -609,7 +731,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                       : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-100'
                   }`}
                 >
-                  {selectedSource === 'fide' ? '✓ Selecionado' : 'Ver Evolução'}
+                  {selectedSource === 'fide' ? '✓ Evolução Ativa' : 'Evolução FIDE'}
                 </button>
               </div>
 
@@ -664,7 +786,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                       : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-100'
                   }`}
                 >
-                  {selectedSource === 'cbx' ? '✓ Selecionado' : 'Ver Evolução'}
+                  {selectedSource === 'cbx' ? '✓ Evolução Ativa' : 'Evolução CBX'}
                 </button>
               </div>
 
@@ -714,11 +836,11 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                   onClick={() => setSelectedSource('fide')}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                     selectedSource === 'fide'
-                      ? 'bg-white text-stone-950 shadow-xs'
-                      : 'text-stone-600 hover:text-stone-900'
+                      ? 'bg-amber-500 text-white shadow-xs'
+                      : 'text-stone-700 hover:text-stone-900 bg-white/70 hover:bg-white'
                   }`}
                 >
-                  <Globe className="w-3.5 h-3.5 text-amber-600" />
+                  <Globe className={`w-3.5 h-3.5 ${selectedSource === 'fide' ? 'text-white' : 'text-amber-600'}`} />
                   <span>Evolução FIDE</span>
                 </button>
                 <button
@@ -726,8 +848,8 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                   onClick={() => setSelectedSource('cbx')}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                     selectedSource === 'cbx'
-                      ? 'bg-white text-stone-950 shadow-xs'
-                      : 'text-stone-600 hover:text-stone-900'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-stone-700 hover:text-stone-900 bg-white/70 hover:bg-white'
                   }`}
                 >
                   <img src="https://cbx.org.br/files/textos/003659/000965.jpg" alt="CBX" className="w-3.5 h-3.5 rounded-xs" />
@@ -736,8 +858,52 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
               </div>
             </div>
 
-            {/* Sub-bar: Modality Filters and Stat Badges */}
-            <div className="px-5 py-3 bg-stone-100/50 border-b border-stone-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+            {/* If no source is selected yet, prompt user to select FIDE or CBX */}
+            {!selectedSource ? (
+              <div className="py-14 sm:py-16 px-6 text-center bg-stone-50/50">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 border border-amber-300/40 text-amber-700 flex items-center justify-center mb-3.5 shadow-2xs">
+                  <Activity className="w-7 h-7 text-amber-600" />
+                </div>
+                <h4 className="text-base sm:text-lg font-extrabold text-stone-900">
+                  Nenhum histórico carregado no momento
+                </h4>
+                <p className="text-xs sm:text-sm text-stone-500 max-w-md mx-auto mt-1 mb-6 leading-relaxed">
+                  Para carregar e visualizar o gráfico de evolução e o histórico deste enxadrista, selecione a federação desejada:
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSource('fide')}
+                    className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition-all cursor-pointer"
+                  >
+                    <Globe className="w-4 h-4" />
+                    <span>Carregar Evolução FIDE</span>
+                    {player.fideId && (
+                      <span className="bg-amber-600/70 px-1.5 py-0.5 rounded font-mono text-[11px] font-normal">
+                        ID: {player.fideId}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSource('cbx')}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition-all cursor-pointer"
+                  >
+                    <img src="https://cbx.org.br/files/textos/003659/000965.jpg" alt="CBX" className="w-4 h-4 rounded-xs" />
+                    <span>Carregar Evolução CBX</span>
+                    {player.cbxId && (
+                      <span className="bg-emerald-700/70 px-1.5 py-0.5 rounded font-mono text-[11px] font-normal">
+                        ID: {player.cbxId}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Sub-bar: Modality Filters and Stat Badges */}
+                <div className="px-5 py-3 bg-stone-100/50 border-b border-stone-100 flex flex-wrap items-center justify-between gap-3 text-xs">
               {/* Modality Filter Pills */}
               <div className="flex items-center gap-2">
                 <span className="text-stone-500 font-semibold text-[11px] uppercase tracking-wider">
@@ -793,8 +959,22 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 </div>
               </div>
 
-              {/* Metric Highlights */}
-              <div className="flex items-center gap-3 text-stone-700 font-mono">
+              {/* Metric Highlights & Chart Style Option */}
+              <div className="flex flex-wrap items-center gap-3 text-stone-700 font-mono">
+                <button
+                  type="button"
+                  onClick={() => setHideEqualDots(!hideEqualDots)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-sans font-semibold cursor-pointer transition-colors flex items-center gap-1.5 ${
+                    hideEqualDots
+                      ? 'bg-amber-100/90 text-amber-900 border border-amber-300 shadow-2xs font-bold'
+                      : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-100'
+                  }`}
+                  title="Quando ativado, remove as bolinhas nos meses em que o rating se manteve igual, deixando a linha limpa"
+                >
+                  <span className={`w-2 h-2 rounded-full ${hideEqualDots ? 'bg-amber-600 ring-2 ring-amber-300' : 'bg-stone-400'}`} />
+                  <span>{hideEqualDots ? 'Sem bolas quando iguais' : 'Todas as bolas'}</span>
+                </button>
+
                 {stats.peak !== null && (
                   <div className="flex items-center gap-1">
                     <span className="text-[11px] text-stone-500">Pico:</span>
@@ -828,14 +1008,56 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
             {/* SVG Interactive Chart Box */}
             <div className="p-4 sm:p-6 bg-white relative">
               {activeHistory.length === 0 ? (
-                <div className="py-16 text-center">
-                  <Activity className="w-8 h-8 mx-auto text-stone-400 mb-2" />
-                  <p className="text-sm font-bold text-stone-700">
+                <div className="py-12 px-4 text-center max-w-md mx-auto">
+                  <Activity className="w-9 h-9 mx-auto text-amber-500 mb-2.5" />
+                  <p className="text-sm sm:text-base font-extrabold text-stone-900">
                     Nenhum histórico disponível para {selectedSource.toUpperCase()}
                   </p>
-                  <p className="text-xs text-stone-500 mt-1">
-                    O enxadrista ainda não possui pontuação ou registro cadastrado nesta federação.
-                  </p>
+                  {selectedSource === 'fide' ? (
+                    <div className="mt-2 space-y-3">
+                      <p className="text-xs text-stone-600 leading-relaxed">
+                        A FIDE bloqueia consultas automatizadas via Cloudflare e CORS.
+                        {player?.fideId ? (
+                          <> Abra a página oficial da FIDE com seu perfil, copie a tabela <code className="px-1.5 py-0.5 rounded bg-stone-100 font-mono text-[11px] text-amber-800 font-bold">profile-table_calc</code> e cole diretamente aqui:</>
+                        ) : (
+                          <> Adicione o ID FIDE do enxadrista para importar o histórico.</>
+                        )}
+                      </p>
+                      <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                        {player?.fideId && (
+                          <a
+                            href={`https://ratings.fide.com/profile/${player.fideId}/chart`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-3 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>Abrir Página FIDE</span>
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setIsImportModalOpen(true)}
+                          className="px-4 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-colors cursor-pointer"
+                        >
+                          <Table className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Colar Tabela profile-table_calc</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleLoadSampleFideData}
+                          className="px-3 py-2 rounded-xl border border-stone-300 hover:bg-stone-100 text-stone-700 font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Exemplo (ID 22747281)</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-stone-500 mt-1">
+                      O enxadrista ainda não possui pontuação ou registro cadastrado nesta federação.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="relative w-full overflow-x-auto">
@@ -928,75 +1150,127 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                         const x = getX(index);
                         const prevItem = index > 0 ? activeHistory[index - 1] : null;
 
+                        // Standard dot conditions
+                        const isStdHovered = hoveredPoint?.period === item.period && hoveredPoint?.modality === 'standard';
+                        const stdChanged = prevItem?.standard === undefined || prevItem.standard === null || item.standard !== prevItem.standard;
+                        const isStdEndpoint = index === 0 || index === activeHistory.length - 1;
+                        const showStdCircle = !hideEqualDots || isStdEndpoint || stdChanged || isStdHovered;
+
+                        // Rapid dot conditions
+                        const isRapHovered = hoveredPoint?.period === item.period && hoveredPoint?.modality === 'rapid';
+                        const rapChanged = prevItem?.rapid === undefined || prevItem.rapid === null || item.rapid !== prevItem.rapid;
+                        const isRapEndpoint = index === 0 || index === activeHistory.length - 1;
+                        const showRapCircle = !hideEqualDots || isRapEndpoint || rapChanged || isRapHovered;
+
+                        // Blitz dot conditions
+                        const isBlzHovered = hoveredPoint?.period === item.period && hoveredPoint?.modality === 'blitz';
+                        const blzChanged = prevItem?.blitz === undefined || prevItem.blitz === null || item.blitz !== prevItem.blitz;
+                        const isBlzEndpoint = index === 0 || index === activeHistory.length - 1;
+                        const showBlzCircle = !hideEqualDots || isBlzEndpoint || blzChanged || isBlzHovered;
+
                         return (
                           <g key={`pts-${item.period}-${index}`}>
                             {/* Standard Dot */}
                             {(selectedModality === 'all' || selectedModality === 'standard') &&
                               item.standard && (
-                                <circle
-                                  cx={x}
-                                  cy={getY(item.standard)}
-                                  r={hoveredPoint?.period === item.period && hoveredPoint?.modality === 'standard' ? 6 : 4}
-                                  className="fill-white stroke-emerald-600 stroke-2 cursor-pointer transition-all hover:r-6"
-                                  onMouseEnter={() => {
-                                    const diff = prevItem?.standard ? item.standard! - prevItem.standard : null;
-                                    setHoveredPoint({
-                                      period: item.period,
-                                      modality: 'standard',
-                                      rating: item.standard!,
-                                      diff,
-                                      x,
-                                      y: getY(item.standard!),
-                                    });
-                                  }}
-                                  onMouseLeave={() => setHoveredPoint(null)}
-                                />
+                                <>
+                                  {/* Hit area for hover tooltip */}
+                                  <circle
+                                    cx={x}
+                                    cy={getY(item.standard)}
+                                    r={8}
+                                    fill="transparent"
+                                    className="cursor-pointer"
+                                    onMouseEnter={() => {
+                                      const diff = prevItem?.standard ? item.standard! - prevItem.standard : null;
+                                      setHoveredPoint({
+                                        period: item.period,
+                                        modality: 'standard',
+                                        rating: item.standard!,
+                                        diff,
+                                        x,
+                                        y: getY(item.standard!),
+                                      });
+                                    }}
+                                    onMouseLeave={() => setHoveredPoint(null)}
+                                  />
+                                  {showStdCircle && (
+                                    <circle
+                                      cx={x}
+                                      cy={getY(item.standard)}
+                                      r={isStdHovered ? 6 : 4}
+                                      className="fill-white stroke-emerald-600 stroke-2 pointer-events-none transition-all"
+                                    />
+                                  )}
+                                </>
                               )}
 
                             {/* Rapid Dot */}
                             {(selectedModality === 'all' || selectedModality === 'rapid') &&
                               item.rapid && (
-                                <circle
-                                  cx={x}
-                                  cy={getY(item.rapid)}
-                                  r={hoveredPoint?.period === item.period && hoveredPoint?.modality === 'rapid' ? 6 : 4}
-                                  className="fill-white stroke-sky-600 stroke-2 cursor-pointer transition-all hover:r-6"
-                                  onMouseEnter={() => {
-                                    const diff = prevItem?.rapid ? item.rapid! - prevItem.rapid : null;
-                                    setHoveredPoint({
-                                      period: item.period,
-                                      modality: 'rapid',
-                                      rating: item.rapid!,
-                                      diff,
-                                      x,
-                                      y: getY(item.rapid!),
-                                    });
-                                  }}
-                                  onMouseLeave={() => setHoveredPoint(null)}
-                                />
+                                <>
+                                  <circle
+                                    cx={x}
+                                    cy={getY(item.rapid)}
+                                    r={8}
+                                    fill="transparent"
+                                    className="cursor-pointer"
+                                    onMouseEnter={() => {
+                                      const diff = prevItem?.rapid ? item.rapid! - prevItem.rapid : null;
+                                      setHoveredPoint({
+                                        period: item.period,
+                                        modality: 'rapid',
+                                        rating: item.rapid!,
+                                        diff,
+                                        x,
+                                        y: getY(item.rapid!),
+                                      });
+                                    }}
+                                    onMouseLeave={() => setHoveredPoint(null)}
+                                  />
+                                  {showRapCircle && (
+                                    <circle
+                                      cx={x}
+                                      cy={getY(item.rapid)}
+                                      r={isRapHovered ? 6 : 4}
+                                      className="fill-white stroke-sky-600 stroke-2 pointer-events-none transition-all"
+                                    />
+                                  )}
+                                </>
                               )}
 
                             {/* Blitz Dot */}
                             {(selectedModality === 'all' || selectedModality === 'blitz') &&
                               item.blitz && (
-                                <circle
-                                  cx={x}
-                                  cy={getY(item.blitz)}
-                                  r={hoveredPoint?.period === item.period && hoveredPoint?.modality === 'blitz' ? 6 : 4}
-                                  className="fill-white stroke-amber-500 stroke-2 cursor-pointer transition-all hover:r-6"
-                                  onMouseEnter={() => {
-                                    const diff = prevItem?.blitz ? item.blitz! - prevItem.blitz : null;
-                                    setHoveredPoint({
-                                      period: item.period,
-                                      modality: 'blitz',
-                                      rating: item.blitz!,
-                                      diff,
-                                      x,
-                                      y: getY(item.blitz!),
-                                    });
-                                  }}
-                                  onMouseLeave={() => setHoveredPoint(null)}
-                                />
+                                <>
+                                  <circle
+                                    cx={x}
+                                    cy={getY(item.blitz)}
+                                    r={8}
+                                    fill="transparent"
+                                    className="cursor-pointer"
+                                    onMouseEnter={() => {
+                                      const diff = prevItem?.blitz ? item.blitz! - prevItem.blitz : null;
+                                      setHoveredPoint({
+                                        period: item.period,
+                                        modality: 'blitz',
+                                        rating: item.blitz!,
+                                        diff,
+                                        x,
+                                        y: getY(item.blitz!),
+                                      });
+                                    }}
+                                    onMouseLeave={() => setHoveredPoint(null)}
+                                  />
+                                  {showBlzCircle && (
+                                    <circle
+                                      cx={x}
+                                      cy={getY(item.blitz)}
+                                      r={isBlzHovered ? 6 : 4}
+                                      className="fill-white stroke-amber-500 stroke-2 pointer-events-none transition-all"
+                                    />
+                                  )}
+                                </>
                               )}
 
                             {/* X-axis Month Label (displayed periodically to prevent clutter) */}
@@ -1090,6 +1364,18 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHistory ? 'animate-spin' : ''}`} />
                   <span>{isLoadingHistory ? 'Buscando...' : 'Atualizar Online'}</span>
                 </button>
+
+                {selectedSource === 'fide' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsImportModalOpen(true)}
+                    className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                    title="Importar ou colar tabela profile-table_calc da FIDE"
+                  >
+                    <Table className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Colar Tabela FIDE</span>
+                  </button>
+                )}
 
                 {selectedSource === 'fide' && player.fideId && (
                   <a
@@ -1193,6 +1479,8 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 </table>
               </div>
             )}
+              </>
+            )}
           </div>
         </div>
 
@@ -1212,6 +1500,206 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Sub-Modal: Import FIDE Profile Table (profile-table_calc) */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-60 bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col border border-stone-200 overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 bg-stone-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-amber-500/20 rounded-lg text-amber-400">
+                  <Table className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold">Importar Tabela da FIDE (profile-table_calc)</h3>
+                  <p className="text-xs text-stone-400">
+                    {player?.name} {player?.fideId ? `(ID FIDE: ${player.fideId})` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(false)}
+                className="p-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto space-y-4 flex-1">
+              {/* Instructions */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-950 space-y-2">
+                <div className="font-bold flex items-center gap-1.5 text-amber-900 text-sm">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Como obter os dados oficiais:</span>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 text-stone-700">
+                  <li>
+                    Acesse a página do gráfico oficial:{' '}
+                    {player?.fideId ? (
+                      <a
+                        href={`https://ratings.fide.com/profile/${player.fideId}/chart`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 font-bold text-amber-900 underline hover:text-amber-700"
+                      >
+                        ratings.fide.com/profile/{player.fideId}/chart
+                        <ExternalLink className="w-3 h-3 inline" />
+                      </a>
+                    ) : (
+                      <span className="font-mono">ratings.fide.com/profile/[FIDE_ID]/chart</span>
+                    )}
+                  </li>
+                  <li>Aguarde o navegador renderizar a tabela com classe <code className="bg-amber-100/80 px-1 py-0.5 rounded font-mono font-bold text-[11px]">profile-table_calc</code>.</li>
+                  <li>
+                    Selecione a tabela inteira (ou copie o código HTML da página) e cole na caixa abaixo.
+                  </li>
+                </ol>
+                <div className="pt-1.5 border-t border-amber-200/60 text-[11px] text-amber-900 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono">
+                  <span><strong>Col 0:</strong> Período</span>
+                  <span><strong>Col 1:</strong> STD Rating</span>
+                  <span><strong>Col 3:</strong> RPD (Rápido)</span>
+                  <span><strong>Col 5:</strong> BLZ (Blitz)</span>
+                </div>
+              </div>
+
+              {/* Action Buttons: Paste, Sample, Process */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePasteFromClipboard}
+                    className="px-3 py-1.5 rounded-lg border border-stone-300 hover:bg-stone-100 text-stone-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Clipboard className="w-3.5 h-3.5 text-stone-600" />
+                    <span>Colar da Área de Transferência</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLoadSampleFideData}
+                    className="px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50/50 hover:bg-amber-100 text-amber-900 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Carregar Demonstração (ID 22747281)</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleProcessImport}
+                  className="px-4 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Processar Tabela</span>
+                </button>
+              </div>
+
+              {/* Textarea */}
+              <div>
+                <textarea
+                  value={rawTableInput}
+                  onChange={(e) => {
+                    setRawTableInput(e.target.value);
+                    if (e.target.value) {
+                      const res = parseFideTableData(e.target.value);
+                      if (res.length > 0) {
+                        setParsedPreview(res);
+                        setImportStatusMessage(`✓ ${res.length} períodos identificados automaticamente!`);
+                      }
+                    }
+                  }}
+                  rows={7}
+                  placeholder={`Cole aqui o código HTML da tabela (<table class="profile-table_calc">...) ou o texto selecionado diretamente da página FIDE...`}
+                  className="w-full text-xs font-mono p-3 border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none resize-y"
+                />
+              </div>
+
+              {/* Status Message */}
+              {importStatusMessage && (
+                <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                  parsedPreview.length > 0 
+                    ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' 
+                    : 'bg-stone-100 text-stone-800 border border-stone-200'
+                }`}>
+                  {parsedPreview.length > 0 ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <Info className="w-4 h-4 text-stone-500 shrink-0" />
+                  )}
+                  <span>{importStatusMessage}</span>
+                </div>
+              )}
+
+              {/* Parsed Preview Table */}
+              {parsedPreview.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-stone-700">
+                    <span>Prévia dos dados extraídos ({parsedPreview.length} períodos):</span>
+                    <span className="text-[11px] text-stone-500 font-mono">
+                      Coluna 0, 1, 3 e 5 mapeadas
+                    </span>
+                  </div>
+                  <div className="border border-stone-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="bg-stone-100 sticky top-0 border-b border-stone-200 text-[11px] font-bold text-stone-600 uppercase font-mono">
+                        <tr>
+                          <th className="py-2 px-3">Período (Col 0)</th>
+                          <th className="py-2 px-3 text-emerald-800">Standard (Col 1)</th>
+                          <th className="py-2 px-3 text-sky-800">Rápido (Col 3)</th>
+                          <th className="py-2 px-3 text-amber-800">Blitz (Col 5)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100 font-mono text-[11px]">
+                        {parsedPreview.slice(0, 10).map((row, idx) => (
+                          <tr key={idx} className="hover:bg-stone-50">
+                            <td className="py-1.5 px-3 font-semibold text-stone-900">{row.period}</td>
+                            <td className="py-1.5 px-3 text-emerald-700 font-bold">{row.standard || '-'}</td>
+                            <td className="py-1.5 px-3 text-sky-700 font-bold">{row.rapid || '-'}</td>
+                            <td className="py-1.5 px-3 text-amber-700 font-bold">{row.blitz || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {parsedPreview.length > 10 && (
+                    <p className="text-[11px] text-stone-500 text-center">
+                      ... e mais {parsedPreview.length - 10} períodos que serão salvos no histórico.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-stone-50 border-t border-stone-200 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setRawTableInput('');
+                  setParsedPreview([]);
+                  setImportStatusMessage(null);
+                }}
+                className="px-4 py-2 border border-stone-300 hover:bg-stone-100 text-stone-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleApplyImportedHistory}
+                disabled={parsedPreview.length === 0}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>Salvar {parsedPreview.length > 0 ? `(${parsedPreview.length})` : ''} no Histórico e Atualizar Gráfico</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

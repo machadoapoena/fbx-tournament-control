@@ -344,25 +344,69 @@ function parseCbxHistory(html: string): Array<{ period: string; standard: number
   return history;
 }
 
-// Helper to parse FIDE chart / history from JSON, AJAX, HTML or Highcharts snippet
+// Helper to parse FIDE chart / history from HTML, profile-table_calc, or AJAX JSON
+function normalizePeriod(raw: string): string {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  const monthsPt: Record<string, string> = {
+    jan: 'Jan', feb: 'Fev', fev: 'Fev', mar: 'Mar', apr: 'Abr', abr: 'Abr',
+    may: 'Mai', mai: 'Mai', jun: 'Jun', jul: 'Jul', aug: 'Ago', ago: 'Ago',
+    sep: 'Set', set: 'Set', oct: 'Out', out: 'Out', nov: 'Nov', dec: 'Dez', dez: 'Dez'
+  };
+  const mNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+  // YYYY-MM or YYYY-MM-DD
+  const isoMatch = s.match(/^(\d{4})[/-](\d{1,2})(?:[/-]\d{1,2})?$/);
+  if (isoMatch) {
+    const y = isoMatch[1];
+    const m = parseInt(isoMatch[2], 10);
+    if (m >= 1 && m <= 12) return `${mNames[m - 1]}/${y}`;
+  }
+
+  // MM/YYYY or M/YYYY
+  const slashMatch = s.match(/^(\d{1,2})[/-](\d{4})$/);
+  if (slashMatch) {
+    const m = parseInt(slashMatch[1], 10);
+    const y = slashMatch[2];
+    if (m >= 1 && m <= 12) return `${mNames[m - 1]}/${y}`;
+  }
+
+  // Month Name YYYY or YYYY Month Name
+  const textMonthMatch = s.match(/([a-zA-Z]{3,})\s*[-/,\s]\s*(\d{4})/) || s.match(/(\d{4})\s*[-/,\s]\s*([a-zA-Z]{3,})/);
+  if (textMonthMatch) {
+    const isYearFirst = /^\d{4}$/.test(textMonthMatch[1]);
+    const y = isYearFirst ? textMonthMatch[1] : textMonthMatch[2];
+    const mText = (isYearFirst ? textMonthMatch[2] : textMonthMatch[1]).toLowerCase().slice(0, 3);
+    const mName = monthsPt[mText] || mText.toUpperCase();
+    return `${mName}/${y}`;
+  }
+
+  // Month Name YY (e.g. "May 24")
+  const shortYearMatch = s.match(/([a-zA-Z]{3,})\s*[-/,\s]\s*(\d{2})$/);
+  if (shortYearMatch) {
+    const mText = shortYearMatch[1].toLowerCase().slice(0, 3);
+    const mName = monthsPt[mText] || mText.toUpperCase();
+    const y = '20' + shortYearMatch[2];
+    return `${mName}/${y}`;
+  }
+
+  return s;
+}
+
 function parseFideHistory(htmlOrJson: string): Array<{ period: string; standard: number | null; rapid: number | null; blitz: number | null }> {
   const historyMap = new Map<string, { period: string; standard: number | null; rapid: number | null; blitz: number | null }>();
   if (!htmlOrJson) return [];
 
   try {
-    const formatPeriod = (raw: string): string => {
-      const s = String(raw).trim();
-      const match = s.match(/^(\d{4})-(\d{2})(?:-\d{2})?$/);
-      if (match) {
-        const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-        const mIdx = parseInt(match[2], 10) - 1;
-        const mName = months[mIdx] || match[2];
-        return `${mName}/${match[1]}`;
-      }
-      return s;
-    };
-
     // Strategy 1 (Top Priority): Rendered table with class="profile-table_calc"
+    // Layout oficial da tabela da FIDE:
+    // Coluna 0: Period
+    // Coluna 1: STD. RATING
+    // Coluna 2: STD GMS (partidas jogadas - desconsiderar)
+    // Coluna 3: RPD (rating rápido)
+    // Coluna 4: RPD GMS (partidas jogadas - desconsiderar)
+    // Coluna 5: BLZ (rating blitz)
+    // Coluna 6: BLZ GMS (partidas jogadas - desconsiderar)
     const $ = cheerio.load(htmlOrJson);
     const calcTables = $('table.profile-table_calc, table[class*="profile-table_calc"]');
     if (calcTables.length > 0) {
@@ -371,85 +415,18 @@ function parseFideHistory(htmlOrJson: string): Array<{ period: string; standard:
         const rows = $tbl.find('tr');
         if (rows.length < 2) return;
 
-        let periodIdx = -1;
-        let stdIdx = -1;
-        let rapIdx = -1;
-        let blzIdx = -1;
-
-        // Inspect header rows
-        for (let r = 0; r < Math.min(rows.length, 3); r++) {
-          const headerTds = rows.eq(r).find('th, td');
-          headerTds.each((idx, el) => {
-            const rawTxt = $(el).text().trim().toUpperCase();
-            const colTxt = rawTxt.replace(/[\.\s]+/g, ' ').trim();
-
-            if (colTxt.includes('GMS') || colTxt.includes('GAME') || colTxt.includes('PARTIDA') || colTxt.includes('JOGO')) {
-              return;
-            }
-
-            if (periodIdx === -1 && (colTxt.includes('PERIOD') || colTxt.includes('MÊS') || colTxt.includes('MES') || colTxt.includes('DATE') || colTxt.includes('PERÍODO'))) {
-              periodIdx = idx;
-            } else if (
-              stdIdx === -1 &&
-              (colTxt.includes('STD RATING') ||
-                colTxt === 'STD' ||
-                colTxt.startsWith('STD ') ||
-                colTxt.includes('STANDAR') ||
-                colTxt.includes('CLÁSSIC') ||
-                colTxt.includes('CLASSIC'))
-            ) {
-              stdIdx = idx;
-            } else if (
-              rapIdx === -1 &&
-              (colTxt.includes('RPD') ||
-                colTxt.includes('RAPID') ||
-                colTxt.includes('RÁPID') ||
-                colTxt === 'RAP' ||
-                colTxt.startsWith('RAP '))
-            ) {
-              rapIdx = idx;
-            } else if (
-              blzIdx === -1 &&
-              (colTxt.includes('BLZ') ||
-                colTxt.includes('BLITZ') ||
-                colTxt.includes('BLT'))
-            ) {
-              blzIdx = idx;
-            }
-          });
-
-          if (stdIdx !== -1 || rapIdx !== -1 || blzIdx !== -1) break;
-        }
-
-        if (periodIdx === -1) periodIdx = 0;
-
-        rows.slice(1).each((_, row) => {
+        rows.each((_, row) => {
           const tds = $(row).find('td');
-          if (tds.length === 0) return;
+          if (tds.length === 0) return; // ignora linha de th / cabeçalho
 
-          const rawPeriod = tds.eq(periodIdx >= 0 ? periodIdx : 0).text().trim();
-          if (!rawPeriod || (!/\d{4}/.test(rawPeriod) && !/\d{2}\/\d{2}/.test(rawPeriod))) {
-            return;
-          }
-          const period = formatPeriod(rawPeriod);
+          const rawPeriod = tds.eq(0).text().trim();
+          if (!rawPeriod || rawPeriod.toUpperCase().includes('PERIOD')) return;
+          const period = normalizePeriod(rawPeriod);
+          if (!period) return;
 
-          let std: number | null = null;
-          let rap: number | null = null;
-          let blz: number | null = null;
-
-          if (stdIdx !== -1 || rapIdx !== -1 || blzIdx !== -1) {
-            if (stdIdx !== -1 && stdIdx < tds.length) std = extractRating(tds.eq(stdIdx).text());
-            if (rapIdx !== -1 && rapIdx < tds.length) rap = extractRating(tds.eq(rapIdx).text());
-            if (blzIdx !== -1 && blzIdx < tds.length) blz = extractRating(tds.eq(blzIdx).text());
-          } else if (tds.length >= 7) {
-            std = extractRating(tds.eq(1).text());
-            rap = extractRating(tds.eq(3).text());
-            blz = extractRating(tds.eq(5).text());
-          } else if (tds.length >= 4) {
-            std = extractRating(tds.eq(1).text());
-            rap = extractRating(tds.eq(2).text());
-            blz = extractRating(tds.eq(3).text());
-          }
+          const std = tds.length > 1 ? extractRating(tds.eq(1).text()) : null;
+          const rap = tds.length > 3 ? extractRating(tds.eq(3).text()) : null;
+          const blz = tds.length > 5 ? extractRating(tds.eq(5).text()) : null;
 
           if (std !== null || rap !== null || blz !== null) {
             if (!historyMap.has(period)) {
@@ -490,7 +467,7 @@ function parseFideHistory(htmlOrJson: string): Array<{ period: string; standard:
         if (!item || typeof item !== 'object') continue;
         const rawDate = item.date_2 || item.date_1 || item.date || item.period || item.name;
         if (!rawDate) continue;
-        const period = formatPeriod(rawDate);
+        const period = normalizePeriod(rawDate);
         const std = extractRating(item.rating);
         const rap = extractRating(item.rapid_rtng || item.rapid || item.rapid_rating);
         const blz = extractRating(item.blitz_rtng || item.blitz || item.blitz_rating);
@@ -739,47 +716,43 @@ async function startServer() {
         }
       }
 
-      // Fetch FIDE Chart / Rating History
-      if (fideId || fideUrl) {
+      // 1. If raw HTML snippet was provided, parse profile-table_calc directly
+      if (req.body.rawHtml || req.body.rawSnippet) {
+        const hist = parseFideHistory(req.body.rawHtml || req.body.rawSnippet);
+        if (hist.length > 0) {
+          fideHistory = hist;
+        }
+      }
+
+      // 2. Fetch FIDE Chart / Rating History online
+      if (fideHistory.length === 0 && (fideId || fideUrl)) {
         const cleanFideId = fideId?.toString().trim();
-        const ajaxChartDataUrl = `https://ratings.fide.com/a_chart_data.phtml?event=${encodeURIComponent(cleanFideId)}&period=0`;
         const targetChartUrl = fideUrl?.includes('/chart') 
           ? fideUrl 
           : `https://ratings.fide.com/profile/${encodeURIComponent(cleanFideId)}/chart`;
+        const ajaxChartDataUrl = `https://ratings.fide.com/a_chart_data.phtml?event=${encodeURIComponent(cleanFideId)}&period=0`;
 
         const requestConfigs: Array<{ url: string; method?: string; headers?: Record<string, string> }> = [
-          // 1. Direct AJAX POST to official FIDE a_chart_data.phtml
           {
-            url: ajaxChartDataUrl,
-            method: 'POST',
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-              'Accept': 'application/json, text/javascript, */*; q=0.01',
-              'X-Requested-With': 'XMLHttpRequest',
-              'Referer': targetChartUrl,
-            },
-          },
-          // 2. Direct AJAX GET to official FIDE a_chart_data.phtml
-          {
-            url: ajaxChartDataUrl,
+            url: `https://api.allorigins.win/raw?url=${encodeURIComponent(targetChartUrl)}`,
             method: 'GET',
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-              'Accept': 'application/json, text/javascript, */*; q=0.01',
-              'X-Requested-With': 'XMLHttpRequest',
-              'Referer': targetChartUrl,
-            },
           },
-          // 3. Proxied requests to official a_chart_data.phtml
+          {
+            url: `https://api.allorigins.win/get?url=${encodeURIComponent(targetChartUrl)}`,
+            method: 'GET',
+          },
+          {
+            url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetChartUrl)}`,
+            method: 'GET',
+          },
+          {
+            url: `https://thingproxy.freeboard.io/fetch/${targetChartUrl}`,
+            method: 'GET',
+          },
           {
             url: `https://api.allorigins.win/raw?url=${encodeURIComponent(ajaxChartDataUrl)}`,
             method: 'GET',
           },
-          {
-            url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(ajaxChartDataUrl)}`,
-            method: 'GET',
-          },
-          // 4. Fallback to /profile/.../chart HTML page
           {
             url: targetChartUrl,
             method: 'GET',
@@ -788,21 +761,10 @@ async function startServer() {
               'Accept': 'text/html,*/*',
             },
           },
-          {
-            url: `https://api.allorigins.win/raw?url=${encodeURIComponent(targetChartUrl)}`,
-            method: 'GET',
-          },
-          {
-            url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetChartUrl)}`,
-            method: 'GET',
-          },
-          {
-            url: `https://r.jina.ai/${targetChartUrl}`,
-            method: 'GET',
-          },
         ];
 
-        for (const cfg of requestConfigs) {
+        // Fetch sources in parallel with 3.5s timeout each
+        const promises = requestConfigs.map(async (cfg) => {
           try {
             const res = await fetch(cfg.url, {
               method: cfg.method || 'GET',
@@ -813,15 +775,29 @@ async function startServer() {
               signal: AbortSignal.timeout(3500),
             });
             if (res.ok) {
-              const text = await res.text();
+              let text = await res.text();
+              if (cfg.url.includes('/get?url=')) {
+                try {
+                  const j = JSON.parse(text);
+                  if (j.contents) text = j.contents;
+                } catch {}
+              }
               const hist = parseFideHistory(text);
               if (hist.length > 0) {
-                fideHistory = hist;
-                break;
+                return hist;
               }
             }
           } catch {
-            // Try next source/proxy
+            // Ignore proxy failure
+          }
+          return null;
+        });
+
+        const results = await Promise.allSettled(promises);
+        for (const r of results) {
+          if (r.status === 'fulfilled' && r.value && r.value.length > 0) {
+            fideHistory = r.value;
+            break;
           }
         }
       }
