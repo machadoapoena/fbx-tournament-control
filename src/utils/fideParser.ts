@@ -248,6 +248,130 @@ export function parseFideTableData(input: string): RatingHistoryEntry[] {
 }
 
 /**
+ * Parses CBX rating evolution table:
+ * Table with caption or header "Evolução Rating" / id="ContentPlaceHolder1_gdvRating":
+ * - Coluna 0: Mês/Ano (ex: "Jul/2026", "Set/2025")
+ * - Coluna 1: Clássico (Standard / Pensado)
+ * - Coluna 2: Rápido (Rapid)
+ * - Coluna 3: Blitz
+ * "Nela tem os registros de rating e os mais atuais na primeira linha"
+ */
+export function parseCbxTableData(input: string): RatingHistoryEntry[] {
+  if (!input || !input.trim()) return [];
+
+  const trimmed = input.trim();
+  const history: RatingHistoryEntry[] = [];
+
+  // Browser environment using DOMParser
+  if (typeof DOMParser !== 'undefined' && (trimmed.includes('<table') || trimmed.includes('<tr'))) {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(trimmed, 'text/html');
+
+      // Find the Evolução Rating table
+      let ratingTable: Element | null = null;
+      const tables = doc.querySelectorAll('table');
+      for (let i = 0; i < tables.length; i++) {
+        const tbl = tables[i];
+        const caption = (tbl.querySelector('caption')?.textContent || '').toLowerCase();
+        const headerText = (tbl.querySelector('tr, th')?.textContent || '').toLowerCase();
+        const idAttr = tbl.getAttribute('id') || '';
+
+        if (
+          /evolu[cç][aã]o\s*(de)?\s*rating/i.test(caption) ||
+          /evolu[cç][aã]o\s*(de)?\s*rating/i.test(headerText) ||
+          (idAttr.includes('gdvRating') && !idAttr.includes('Torneio'))
+        ) {
+          ratingTable = tbl;
+          break;
+        }
+      }
+
+      if (!ratingTable) {
+        ratingTable = doc.querySelector('#ContentPlaceHolder1_gdvRating, table[id*="gdvRating"]');
+      }
+
+      if (ratingTable) {
+        let stdCol = 1;
+        let rapCol = 2;
+        let blzCol = 3;
+
+        const headerRow = ratingTable.querySelector('tr');
+        if (headerRow) {
+          const cells = headerRow.querySelectorAll('th, td');
+          cells.forEach((cell, idx) => {
+            const txt = (cell.textContent || '').toLowerCase();
+            if (txt.includes('cláss') || txt.includes('class') || txt.includes('pensad') || txt.includes('std')) stdCol = idx;
+            else if (txt.includes('ráp') || txt.includes('rap')) rapCol = idx;
+            else if (txt.includes('blitz') || txt.includes('relâm') || txt.includes('relam')) blzCol = idx;
+          });
+        }
+
+        const rows = ratingTable.querySelectorAll('tr');
+        rows.forEach((row) => {
+          const tds = row.querySelectorAll('td');
+          if (tds.length >= 3) {
+            const period = normalizePeriod(tds[0]?.textContent || '');
+            const std = extractRatingNumber(tds[stdCol]?.textContent);
+            const rap = extractRatingNumber(tds[rapCol]?.textContent);
+            const blz = extractRatingNumber(tds[blzCol]?.textContent);
+            if (period && (std !== null || rap !== null || blz !== null)) {
+              history.push({ period, standard: std, rapid: rap, blitz: blz });
+            }
+          }
+        });
+
+        if (history.length > 0) {
+          return history;
+        }
+      }
+    } catch {
+      // Fallback to regex
+    }
+  }
+
+  // Regex parser (works in both Node.js and Browser)
+  let tableSnippet = '';
+  const evolucaoMatch =
+    trimmed.match(/<table[^>]*?(?:gdvRating|Evolu[cç][aã]o[^>]*?Rating)[^>]*>([\s\S]*?)<\/table>/i) ||
+    trimmed.match(/<table[^>]*>([\s\S]*?Evolu[cç][aã]o\s*(?:de)?\s*Rating[\s\S]*?)<\/table>/i);
+
+  if (evolucaoMatch) {
+    tableSnippet = evolucaoMatch[0];
+  } else {
+    tableSnippet = trimmed;
+  }
+
+  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch;
+  while ((rowMatch = rowRegex.exec(tableSnippet)) !== null) {
+    const rowHtml = rowMatch[1];
+    if (rowHtml.toLowerCase().includes('<th') || rowHtml.toLowerCase().includes('mês/ano') || rowHtml.toLowerCase().includes('mes/ano')) {
+      continue;
+    }
+
+    const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+    const cells: string[] = [];
+    let cellMatch;
+    while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
+      cells.push(cellMatch[1].replace(/<[^>]*>/g, '').trim());
+    }
+
+    if (cells.length >= 3) {
+      const period = normalizePeriod(cells[0]);
+      const std = extractRatingNumber(cells[1]);
+      const rap = extractRatingNumber(cells[2]);
+      const blz = cells.length >= 4 ? extractRatingNumber(cells[3]) : null;
+      if (period && (std !== null || rap !== null || blz !== null)) {
+        history.push({ period, standard: std, rapid: rap, blitz: blz });
+      }
+    }
+  }
+
+  return history;
+}
+
+/**
  * Generates an authentic rating progression trajectory when external scraping is unavailable or blocked by Cloudflare.
  * Strictly guarantees that:
  * 1. The final rating in the timeline matches the player's official current rating.

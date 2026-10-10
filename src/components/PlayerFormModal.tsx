@@ -245,20 +245,69 @@ export const PlayerFormModal: React.FC<PlayerFormModalProps> = ({
         res.fide = fideData;
       }
 
-      // CBX parser
-      const cbxTable = doc.querySelector('#ContentPlaceHolder1_gdvRating, table[id*="gdvRating"]');
-      if (cbxTable) {
-        const trs = cbxTable.querySelectorAll('tr');
-        if (trs.length >= 2) {
-          const tds = trs[1].querySelectorAll('td');
-          if (tds.length >= 4) {
-            res.cbx = {
-              standard: getNum(tds[1].textContent) || undefined,
-              rapid: getNum(tds[2].textContent) || undefined,
-              blitz: getNum(tds[3].textContent) || undefined,
-            };
-          }
+      // CBX parser - Target table with header/caption "Evolução Rating"
+      let cbxTable: Element | null = null;
+      const tables = doc.querySelectorAll('table');
+      for (let i = 0; i < tables.length; i++) {
+        const tbl = tables[i];
+        const caption = (tbl.querySelector('caption')?.textContent || '').toLowerCase();
+        const headerText = (tbl.querySelector('tr, th')?.textContent || '').toLowerCase();
+        const idAttr = tbl.getAttribute('id') || '';
+
+        if (
+          /evolu[cç][aã]o\s*(de)?\s*rating/i.test(caption) ||
+          /evolu[cç][aã]o\s*(de)?\s*rating/i.test(headerText) ||
+          (idAttr.includes('gdvRating') && !idAttr.includes('Torneio'))
+        ) {
+          cbxTable = tbl;
+          break;
         }
+      }
+
+      if (!cbxTable) {
+        cbxTable = doc.querySelector('#ContentPlaceHolder1_gdvRating, table[id*="gdvRating"]');
+      }
+
+      if (cbxTable) {
+        let stdCol = 1;
+        let rapCol = 2;
+        let blzCol = 3;
+
+        const headerRow = cbxTable.querySelector('tr');
+        if (headerRow) {
+          const cells = headerRow.querySelectorAll('th, td');
+          cells.forEach((cell, idx) => {
+            const txt = (cell.textContent || '').toLowerCase();
+            if (txt.includes('cláss') || txt.includes('class') || txt.includes('pensad') || txt.includes('std')) stdCol = idx;
+            else if (txt.includes('ráp') || txt.includes('rap')) rapCol = idx;
+            else if (txt.includes('blitz') || txt.includes('relâm') || txt.includes('relam')) blzCol = idx;
+          });
+        }
+
+        const dataRows = Array.from(cbxTable.querySelectorAll('tr')).filter(r => r.querySelectorAll('td').length >= 3);
+        if (dataRows.length > 0) {
+          // A primeira linha contém os ratings mais atuais
+          const firstRow = dataRows[0];
+          const tds = firstRow.querySelectorAll('td');
+          res.cbx = {
+            standard: getNum(tds[stdCol]?.textContent) || undefined,
+            rapid: getNum(tds[rapCol]?.textContent) || undefined,
+            blitz: getNum(tds[blzCol]?.textContent) || undefined,
+          };
+        }
+      }
+
+      // Extract Name and UF from CBX if present in snippet
+      const cbxNameEl = doc.querySelector('#dados-jogador-row1 h2, .nome-jogador');
+      if (cbxNameEl?.textContent && !cbxNameEl.textContent.toLowerCase().includes('cbx')) {
+        if (!res.cbx) res.cbx = {};
+        res.cbx.name = cbxNameEl.textContent.trim();
+      }
+      const cbxInfoText = doc.querySelector('#dados-jogador-row1')?.textContent || '';
+      const ufMatch = cbxInfoText.match(/UF:\s*([A-Z]{2})/i);
+      if (ufMatch) {
+        if (!res.cbx) res.cbx = {};
+        res.cbx.state = ufMatch[1].toUpperCase();
       }
     } catch {
       // ignore
@@ -365,6 +414,21 @@ export const PlayerFormModal: React.FC<PlayerFormModalProps> = ({
         }
         if (result.cbx.name && !formData.name) {
           updates.name = result.cbx.name;
+        }
+        if (result.cbx.fideId && !formData.fideId) {
+          updates.fideId = result.cbx.fideId;
+          if (!formData.fideUrl) {
+            updates.fideUrl = `https://ratings.fide.com/profile/${result.cbx.fideId}`;
+          }
+        }
+        if (result.cbx.birthDate && !formData.birthDate) {
+          const parts = result.cbx.birthDate.split('/');
+          if (parts.length === 3) {
+            updates.birthDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+          }
+        }
+        if (result.cbx.title && (!formData.title || formData.title === 'Sem Título')) {
+          updates.title = result.cbx.title as ChessTitle;
         }
         if (!formData.cbxUrl && formData.cbxId) {
           updates.cbxUrl = `https://www.cbx.org.br/jogador/${formData.cbxId.trim()}`;

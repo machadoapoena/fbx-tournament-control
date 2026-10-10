@@ -145,6 +145,8 @@ export interface ScrapedRatingsResult {
     name: string | null;
     state: string | null;
     club: string | null;
+    fideId?: string | null;
+    birthDate?: string | null;
     error: string | null;
   };
 }

@@ -1,4 +1,4 @@
-import { parseFideTableData, generateRealisticHistory, sortHistoryChronological } from '../src/utils/fideParser';
+import { parseFideTableData, parseCbxTableData, generateRealisticHistory, sortHistoryChronological } from '../src/utils/fideParser';
 import { RatingHistoryEntry } from '../src/types/chess';
 
 async function getParsedBody(req: any): Promise<any> {
@@ -64,14 +64,16 @@ export default async function handler(req: any, res: any) {
         try {
           const cbxRes = await fetch(targetCbxUrl, {
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
               'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+              'Cache-Control': 'no-cache',
             },
-            signal: AbortSignal.timeout(3500),
+            signal: AbortSignal.timeout(10000), // Espera carregar a página da CBX
           });
           if (cbxRes.ok) {
             const html = await cbxRes.text();
-            const parsed = parseFideTableData(html);
+            const parsed = parseCbxTableData(html);
             if (parsed.length > 0) {
               cbxHistory = parsed;
             }
