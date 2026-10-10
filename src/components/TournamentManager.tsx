@@ -672,9 +672,9 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                     )}
 
                     <button
-                      onClick={() => exportTournamentStandingsToPDF(activeTournament)}
+                      onClick={() => exportTournamentStandingsToPDF(activeTournament, players)}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-                      title="Baixar classificação em PDF"
+                      title="Baixar lista de jogadores inscritos em PDF"
                     >
                       <FileText className="w-3.5 h-3.5 text-rose-600" />
                       <span>PDF</span>

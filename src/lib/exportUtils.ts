@@ -2,6 +2,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { Player, SwissExportConfig, Tournament } from '../types/chess';
+import { FBX_LOGO_BASE64 } from './fbxLogo';
+import { findMatchingPlayer } from './playerMatching';
 
 // Calculate age from YYYY-MM-DD
 export function calculateAge(birthDateString: string): number {
@@ -573,49 +575,147 @@ export function exportPlayersToPDF(players: Player[], title = 'Relatório Geral 
   doc.save(`${title.toLowerCase().replace(/\s+/g, '_')}.pdf`);
 }
 
-// PDF Export for Tournament Standings
-export function exportTournamentStandingsToPDF(tournament: Tournament) {
+// PDF Export for Tournament Standings / Enrolled Players
+export function exportTournamentStandingsToPDF(tournament: Tournament, players: Player[] = []) {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'pt',
     format: 'a4'
   });
 
-  doc.setFillColor(15, 23, 42);
-  doc.rect(0, 0, 595, 65, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(15);
-  doc.setFont('helvetica', 'bold');
-  doc.text(tournament.name, 40, 30);
+  const pageWidth = 595;
+  const marginX = 36;
+  const headerHeight = 72;
 
-  const modalityLabel = tournament.type === 'blitz' ? 'Blitz' : tournament.type === 'rapid' ? 'Rápido' : 'Standard';
-  doc.text(`Local: ${tournament.city} - ${tournament.state} | Modalidade: ${modalityLabel} | Rodadas: ${tournament.rounds} | Ritmo: ${tournament.timeControl}`, 40, 48);
+  // White header background
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, pageWidth, headerHeight, 'F');
+
+  // Subtle border line under header
+  doc.setDrawColor(226, 232, 240); // Slate 200
+  doc.setLineWidth(1);
+  doc.line(0, headerHeight, pageWidth, headerHeight);
+
+  // FBX Logo on top left if available
+  let textStartX = marginX;
+  try {
+    if (FBX_LOGO_BASE64) {
+      doc.addImage(FBX_LOGO_BASE64, 'PNG', marginX, 12, 48, 48);
+      textStartX = marginX + 58;
+    }
+  } catch (err) {
+    console.warn('Não foi possível carregar a logo da FBX no PDF:', err);
+  }
+
+  // Header Title - Black text
+  doc.setTextColor(15, 23, 42); // Black / Slate 900
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  const safeTitle = tournament.name || 'Torneio de Xadrez';
+  doc.text(safeTitle, textStartX, 28);
+
+  // Subtitle / Tournament details - Black / Dark Gray text
+  const modalityLabel = tournament.type === 'blitz' ? 'Blitz' : tournament.type === 'rapid' ? 'Rápido' : 'Standard / Pensado';
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105); // Slate 600
+  const detailLine1 = `Local: ${tournament.city || '-'} - ${tournament.state || '-'}  |  Modalidade: ${modalityLabel}  |  Ritmo: ${tournament.timeControl || '-'}`;
+  doc.text(detailLine1, textStartX, 44);
+
+  const detailLine2 = `Rodadas: ${tournament.rounds || '-'}  |  Status: ${tournament.status || '-'}  |  Gerado em: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`;
+  doc.text(detailLine2, textStartX, 58);
+
+  const modality = tournament.type || 'standard';
+  const modalityRatingLabel = modality === 'blitz' ? 'Blitz' : modality === 'rapid' ? 'Rápido' : 'Std';
 
   const standings = tournament.standings || [];
-  const tableHead = [['Pos', 'Jogador', 'Título', 'ID FIDE', 'ID CBX', 'Pts']];
-  const tableBody = standings.map((s, idx) => [
-    s.rank || idx + 1,
-    s.playerName,
-    s.title || '-',
-    s.fideId || '-',
-    s.cbxId || '-',
-    s.points.toFixed(1)
-  ]);
+  const tableHead = [
+    ['Pos', 'Tít.', 'Nome do Jogador', `Rating FIDE (${modalityRatingLabel})`, `Rating CBX (${modalityRatingLabel})`, 'ID FIDE', 'ID CBX', 'Pts']
+  ];
+
+  const tableBody = standings.map((s, idx) => {
+    const matched = findMatchingPlayer(s, players);
+
+    // Titulação: coluna antes do nome. Se não tiver ou for "Sem Título", deixar vazio ('')
+    let rawTitle = s.title || matched?.title || '';
+    if (rawTitle.toLowerCase().trim() === 'sem título' || rawTitle.toLowerCase().trim() === 'sem titulo') {
+      rawTitle = '';
+    }
+
+    // FIDE rating for tournament modality
+    let fideRatingVal = 0;
+    if (modality === 'blitz') {
+      fideRatingVal = matched?.ratingFideBlitz || 0;
+    } else if (modality === 'rapid') {
+      fideRatingVal = matched?.ratingFideRapid || 0;
+    } else {
+      fideRatingVal = matched?.ratingFideStandard || matched?.ratingFide || 0;
+    }
+    const fideRatingStr = fideRatingVal > 0 ? String(fideRatingVal) : '-';
+
+    // CBX rating for tournament modality
+    let cbxRatingVal = 0;
+    if (modality === 'blitz') {
+      cbxRatingVal = matched?.ratingCbxBlitz || 0;
+    } else if (modality === 'rapid') {
+      cbxRatingVal = matched?.ratingCbxRapid || 0;
+    } else {
+      cbxRatingVal = matched?.ratingCbxStandard || matched?.ratingCbx || 0;
+    }
+    const cbxRatingStr = cbxRatingVal > 0 ? String(cbxRatingVal) : '-';
+
+    return [
+      s.rank || idx + 1,
+      rawTitle || '-',
+      s.playerName,
+      fideRatingStr,
+      cbxRatingStr,
+      s.fideId || matched?.fideId || '-',
+      s.cbxId || matched?.cbxId || '-',
+      s.points !== undefined ? s.points.toFixed(1) : '0.0'
+    ];
+  });
 
   autoTable(doc, {
     head: tableHead,
     body: tableBody,
     startY: 85,
-    margin: { left: 40, right: 40 },
-    theme: 'striped',
+    margin: { left: marginX, right: marginX },
+    theme: 'plain',
     headStyles: {
-      fillColor: [30, 41, 59],
-      textColor: 255,
-      fontSize: 9,
-      fontStyle: 'bold'
+      fillColor: [255, 255, 255],
+      textColor: [0, 0, 0],
+      fontSize: 8,
+      fontStyle: 'bold',
+      halign: 'center',
+      lineColor: [203, 213, 225],
+      lineWidth: { bottom: 1.5, top: 0, left: 0, right: 0 }
     },
-    styles: { fontSize: 9 },
+    styles: {
+      fontSize: 8,
+      textColor: [30, 41, 59],
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252]
+    },
+    columnStyles: {
+      0: { cellWidth: 30, halign: 'center' },            // Pos
+      1: { cellWidth: 38, halign: 'center', fontStyle: 'bold' }, // Título antes do nome
+      2: { cellWidth: 165 },                             // Nome do Jogador
+      3: { cellWidth: 70, halign: 'center' },            // Rating FIDE
+      4: { cellWidth: 68, halign: 'center' },            // Rating CBX
+      5: { cellWidth: 55, halign: 'center' },            // ID FIDE
+      6: { cellWidth: 55, halign: 'center' },            // ID CBX
+      7: { cellWidth: 42, halign: 'center', fontStyle: 'bold' }, // Pts
+    },
+    didDrawPage: () => {
+      const pageStr = `Página ${doc.getNumberOfPages()}  |  Federação Brasiliense de Xadrez (FBX)`;
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(pageStr, marginX, 825);
+    }
   });
 
-  doc.save(`classificacao_${tournament.name.toLowerCase().replace(/\s+/g, '_')}.pdf`);
+  doc.save(`jogadores_${tournament.name.toLowerCase().replace(/\s+/g, '_')}.pdf`);
 }
+
