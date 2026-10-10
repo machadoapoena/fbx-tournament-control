@@ -26,9 +26,14 @@ interface StatsOverviewProps {
 }
 
 type SpotlightCategory = 'TODOS' | 'SUB10' | 'SUB14' | 'SUB20';
+type SpotlightSystem = 'fide' | 'cbx';
 
 const getFideStandardRating = (p: Player): number => {
   return p.ratingFideStandard ?? p.ratingFide ?? 0;
+};
+
+const getCbxStandardRating = (p: Player): number => {
+  return p.ratingCbxStandard ?? p.ratingCbx ?? 0;
 };
 
 export const StatsOverview: React.FC<StatsOverviewProps> = ({
@@ -45,12 +50,15 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
     players: Player[];
   } | null>(null);
 
+  const [spotlightSystem, setSpotlightSystem] = useState<SpotlightSystem>('fide');
   const [spotlightCategory, setSpotlightCategory] = useState<SpotlightCategory>('TODOS');
 
   const spotlightPlayers = useMemo(() => {
+    const getRating = spotlightSystem === 'fide' ? getFideStandardRating : getCbxStandardRating;
+
     return [...players]
       .filter((p) => {
-        const rating = getFideStandardRating(p);
+        const rating = getRating(p);
         if (rating <= 0) return false;
 
         if (spotlightCategory === 'TODOS') return true;
@@ -69,12 +77,12 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
         }
         return true;
       })
-      .sort((a, b) => getFideStandardRating(b) - getFideStandardRating(a))
+      .sort((a, b) => getRating(b) - getRating(a))
       .slice(0, 5);
-  }, [players, spotlightCategory]);
+  }, [players, spotlightCategory, spotlightSystem]);
 
-  const hasAnyFideStandardPlayers = useMemo(() => {
-    return players.some((p) => getFideStandardRating(p) > 0);
+  const hasAnySpotlightPlayers = useMemo(() => {
+    return players.some((p) => getFideStandardRating(p) > 0 || getCbxStandardRating(p) > 0);
   }, [players]);
 
   // Compute players with most participations in tournaments with status 'Finalizado'
@@ -403,22 +411,73 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
       </div>
 
       {/* Top Rated Players Spotlight */}
-      {hasAnyFideStandardPlayers && (
+      {hasAnySpotlightPlayers && (
         <div className="bg-white rounded-2xl p-6 border border-stone-200 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5">
             <div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    spotlightSystem === 'fide' ? 'bg-emerald-500' : 'bg-blue-500'
+                  } animate-pulse`}
+                ></span>
                 <h2 className="text-base sm:text-lg font-bold text-stone-900 font-sans">
-                  Destaques por Rating FIDE
+                  Destaques por Rating {spotlightSystem === 'fide' ? 'FIDE' : 'CBX'}
                 </h2>
+                <span
+                  className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                    spotlightSystem === 'fide'
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      : 'bg-blue-100 text-blue-800 border border-blue-200'
+                  }`}
+                >
+                  {spotlightSystem === 'fide' ? 'Internacional' : 'Nacional'}
+                </span>
               </div>
               <p className="text-xs text-stone-600 mt-0.5">
-                Top 5 maiores pontuações Elo Standard (Clássico / Pensado) oficiais
+                {spotlightSystem === 'fide'
+                  ? 'Top 5 maiores pontuações Elo Standard (Clássico / Pensado) oficiais FIDE'
+                  : 'Top 5 maiores pontuações de rating Clássico (Pensado) oficiais CBX'}
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Classification Option: FIDE vs CBX */}
+              <div className="inline-flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200/80 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setSpotlightSystem('fide')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    spotlightSystem === 'fide'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'text-stone-600 hover:text-stone-950 hover:bg-stone-200/70'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      spotlightSystem === 'fide' ? 'bg-white' : 'bg-emerald-500'
+                    }`}
+                  ></span>
+                  FIDE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSpotlightSystem('cbx')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    spotlightSystem === 'cbx'
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'text-stone-600 hover:text-stone-950 hover:bg-stone-200/70'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      spotlightSystem === 'cbx' ? 'bg-white' : 'bg-blue-500'
+                    }`}
+                  ></span>
+                  CBX
+                </button>
+              </div>
+
               {/* Category tags: TODOS, SUB10, SUB14, SUB20 */}
               <div className="inline-flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200/80">
                 {(['TODOS', 'SUB10', 'SUB14', 'SUB20'] as const).map((cat) => {
@@ -452,9 +511,17 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
           {spotlightPlayers.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
               {spotlightPlayers.map((player, idx) => {
-                const stdRating = getFideStandardRating(player);
+                const currentRating =
+                  spotlightSystem === 'fide'
+                    ? getFideStandardRating(player)
+                    : getCbxStandardRating(player);
                 const age = player.birthDate ? calculateAge(player.birthDate) : null;
-                const fideUrl = player.fideUrl || (player.fideId ? `https://ratings.fide.com/profile/${player.fideId}` : undefined);
+                const fideUrl =
+                  player.fideUrl ||
+                  (player.fideId ? `https://ratings.fide.com/profile/${player.fideId}` : undefined);
+                const cbxUrl =
+                  player.cbxUrl ||
+                  (player.cbxId ? `https://www.cbx.org.br/jogador/${player.cbxId}` : undefined);
 
                 return (
                   <div
@@ -462,7 +529,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                     className="p-4 rounded-xl border border-stone-200/90 bg-stone-50/60 hover:bg-white hover:border-stone-300 transition-all flex flex-col justify-between shadow-2xs group"
                   >
                     <div>
-                      {/* Top bar in card: Rank badge + State/FIDE Icon */}
+                      {/* Top bar in card: Rank badge + State & Icon */}
                       <div className="flex items-center justify-between mb-2.5">
                         <span
                           className={`text-[10px] font-mono font-black px-2 py-0.5 rounded shadow-2xs ${
@@ -485,7 +552,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                             </span>
                           )}
 
-                          {fideUrl && (
+                          {spotlightSystem === 'fide' && fideUrl && (
                             <a
                               href={fideUrl}
                               target="_blank"
@@ -500,6 +567,18 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                                 height="20"
                                 className="inline-block"
                               />
+                            </a>
+                          )}
+
+                          {spotlightSystem === 'cbx' && (cbxUrl || player.cbxId) && (
+                            <a
+                              href={cbxUrl || `https://www.cbx.org.br/jogador/${player.cbxId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={`Abrir perfil CBX oficial de ${player.name} (${player.cbxId || ''})`}
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-black bg-blue-100 text-blue-800 border border-blue-200 hover:scale-105 transition-transform cursor-pointer"
+                            >
+                              CBX {player.cbxId || ''}
                             </a>
                           )}
                         </div>
@@ -530,18 +609,28 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                       </div>
                     </div>
 
-                    {/* Footer: Rating FIDE Standard */}
+                    {/* Footer: Rating Value */}
                     <div className="mt-3.5 pt-2.5 border-t border-stone-200/90 flex items-center justify-between">
                       <div className="flex flex-col">
                         <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-tight">
-                          FIDE Standard
+                          {spotlightSystem === 'fide' ? 'FIDE Standard' : 'CBX Clássico'}
                         </span>
-                        <span className="text-[9px] text-emerald-700 font-semibold">
-                          Clássico
+                        <span
+                          className={`text-[9px] font-semibold ${
+                            spotlightSystem === 'fide' ? 'text-emerald-700' : 'text-blue-700'
+                          }`}
+                        >
+                          {spotlightSystem === 'fide' ? 'Internacional' : 'Nacional'}
                         </span>
                       </div>
-                      <span className="inline-flex items-center justify-center min-w-[46px] px-2 py-0.5 rounded text-xs font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
-                        {stdRating}
+                      <span
+                        className={`inline-flex items-center justify-center min-w-[46px] px-2 py-0.5 rounded text-xs font-mono font-bold shadow-2xs ${
+                          spotlightSystem === 'fide'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-blue-50 text-blue-800 border border-blue-200'
+                        }`}
+                      >
+                        {currentRating}
                       </span>
                     </div>
                   </div>
@@ -551,10 +640,14 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
           ) : (
             <div className="py-10 px-4 text-center rounded-xl bg-stone-50/70 border border-dashed border-stone-200">
               <p className="text-sm font-semibold text-stone-700">
-                Nenhum atleta na categoria <span className="font-mono font-bold">{spotlightCategory}</span> com rating FIDE Standard cadastrado.
+                Nenhum atleta na categoria{' '}
+                <span className="font-mono font-bold">{spotlightCategory}</span> com rating{' '}
+                {spotlightSystem === 'fide' ? 'FIDE Standard' : 'CBX Clássico'} cadastrado.
               </p>
               <p className="text-xs text-stone-500 mt-1">
-                Cadastre novos atletas com data de nascimento ou atualize os ratings através do arquivo oficial da FIDE.
+                {spotlightSystem === 'fide'
+                  ? 'Cadastre novos atletas com ID FIDE ou atualize os ratings através da busca online.'
+                  : 'Cadastre novos atletas com ID CBX ou atualize os ratings através da busca online.'}
               </p>
             </div>
           )}
