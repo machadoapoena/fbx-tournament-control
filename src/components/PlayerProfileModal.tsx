@@ -236,25 +236,32 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
     const peak = Math.max(...ratings);
     const lowest = Math.min(...ratings);
 
-    // Get current (last non-null) and start (first non-null)
-    const lastItem = activeHistory[activeHistory.length - 1];
-    const firstItem = activeHistory[0];
+    // Find latest non-null rating (current) and earliest non-null rating (start)
+    let current = 0;
+    for (let i = activeHistory.length - 1; i >= 0; i--) {
+      const it = activeHistory[i];
+      const val = selectedModality === 'standard' ? it.standard
+                : selectedModality === 'rapid' ? it.rapid
+                : selectedModality === 'blitz' ? it.blitz
+                : (it.standard || it.rapid || it.blitz);
+      if (val && val > 0) {
+        current = val;
+        break;
+      }
+    }
 
-    const current = selectedModality === 'standard' 
-      ? (lastItem.standard || 0)
-      : selectedModality === 'rapid'
-      ? (lastItem.rapid || 0)
-      : selectedModality === 'blitz'
-      ? (lastItem.blitz || 0)
-      : (lastItem.standard || lastItem.rapid || lastItem.blitz || 0);
-
-    const start = selectedModality === 'standard' 
-      ? (firstItem.standard || current)
-      : selectedModality === 'rapid'
-      ? (firstItem.rapid || current)
-      : selectedModality === 'blitz'
-      ? (firstItem.blitz || current)
-      : (firstItem.standard || firstItem.rapid || firstItem.blitz || current);
+    let start = current;
+    for (let i = 0; i < activeHistory.length; i++) {
+      const it = activeHistory[i];
+      const val = selectedModality === 'standard' ? it.standard
+                : selectedModality === 'rapid' ? it.rapid
+                : selectedModality === 'blitz' ? it.blitz
+                : (it.standard || it.rapid || it.blitz);
+      if (val && val > 0) {
+        start = val;
+        break;
+      }
+    }
 
     const netGain = current - start;
 

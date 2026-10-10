@@ -1,11 +1,36 @@
 import { parseFideTableData, generateRealisticHistory, sortHistoryChronological } from '../src/utils/fideParser';
 import { RatingHistoryEntry } from '../src/types/chess';
 
+async function getParsedBody(req: any): Promise<any> {
+  if (req.body) {
+    if (typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+      return req.body;
+    }
+    try {
+      const raw = Buffer.isBuffer(req.body) ? req.body.toString('utf-8') : String(req.body);
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+
+  try {
+    const buffers: Buffer[] = [];
+    for await (const chunk of req) {
+      buffers.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+    }
+    const raw = Buffer.concat(buffers).toString('utf-8');
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
 export default async function handler(req: any, res: any) {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -16,7 +41,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+    const body = await getParsedBody(req);
     const { cbxId, cbxUrl, fideId, fideUrl, rawSnippet, targetSource, currentRatings } = body;
 
     let cbxHistory: RatingHistoryEntry[] = [];
@@ -79,6 +104,10 @@ export default async function handler(req: any, res: any) {
           method: 'GET',
         },
         {
+          url: `https://corsproxy.io/?url=${encodeURIComponent(targetChartUrl)}`,
+          method: 'GET',
+        },
+        {
           url: `https://api.allorigins.win/raw?url=${encodeURIComponent(ajaxChartDataUrl)}`,
           method: 'GET',
         },
@@ -130,7 +159,7 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 3. Fallback: If FIDE scraping returned 0 (e.g. Cloudflare Turnstile block on Vercel), generate authentic progression
+    // 3. Fallback: If FIDE scraping returned 0 (e.g. Cloudflare block on Vercel), generate authentic progression
     if (targetSource !== 'cbx' && fideHistory.length === 0 && (fideId || currentRatings?.fideStandard || currentRatings?.fideRapid || currentRatings?.fideBlitz)) {
       const fideRatings = {
         standard: currentRatings?.fideStandard || null,
@@ -156,7 +185,7 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // Always ensure chronological sorting (oldest to newest)
+    // Always ensure chronological sorting (oldest to newest: past on left -> present on right)
     cbxHistory = sortHistoryChronological(cbxHistory, true);
     fideHistory = sortHistoryChronological(fideHistory, true);
 

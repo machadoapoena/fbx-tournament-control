@@ -315,24 +315,36 @@ export const playerService = {
     cbxUrl?: string;
     rawSnippet?: string;
   }): Promise<ScrapedRatingsResult> {
-    const response = await fetch('/api/scrape-ratings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(params),
-    });
+    try {
+      const response = await fetch('/api/scrape-ratings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(params),
+      });
 
-    if (!response.ok) {
-      throw new Error(`Falha ao conectar com o serviço de busca (Status ${response.status})`);
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('O serviço de consulta retornou uma resposta inválida. Utilize a opção "Colar HTML" ou digite os ratings.');
+      }
+
+      if (!response.ok) {
+        throw new Error(`Falha ao conectar com o serviço de busca (Status ${response.status})`);
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao obter ratings da FIDE e CBX');
+      }
+
+      return data.data;
+    } catch (err: any) {
+      if (err.name === 'TypeError' && err.message?.includes('fetch')) {
+        throw new Error('Não foi possível conectar ao servidor de busca de ratings. Verifique a rede ou utilize "Colar HTML".');
+      }
+      throw err;
     }
-
-    const data = await response.json();
-    if (!data.success) {
-      throw new Error(data.error || 'Erro ao obter ratings da FIDE e CBX');
-    }
-
-    return data.data;
   },
 
   async seedInitialData(): Promise<number> {

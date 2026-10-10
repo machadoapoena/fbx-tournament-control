@@ -1,4 +1,4 @@
-import * as cheerio from 'cheerio';
+import { load } from 'cheerio';
 
 function extractRating(val: string | null | undefined): number | null {
   if (!val) return null;
@@ -35,7 +35,7 @@ function parseFideHtml(html: string) {
   if (!html) return result;
 
   try {
-    const $ = cheerio.load(html);
+    const $ = load(html);
 
     const extractFromGameBlock = (selectors: string[]) => {
       for (const selector of selectors) {
@@ -92,6 +92,21 @@ function parseFideHtml(html: string) {
       '.profile-top-rating-data_blz',
       '.profile-games .profile-blitz'
     ]);
+
+    // Name
+    const nameEl = $('.profile-top-title, .profile-title, h1.profile-top-title');
+    if (nameEl.length > 0) {
+      const rawName = nameEl.first().text().trim();
+      if (rawName && !rawName.toLowerCase().includes('fide')) {
+        result.name = rawName;
+      }
+    }
+
+    // Title (GM, IM, FM, etc.)
+    const titleEl = $('.profile-top-info__title, .profile-top-data_title');
+    if (titleEl.length > 0) {
+      result.title = titleEl.first().text().trim();
+    }
   } catch {
     // Ignore cheerio parse error
   }
@@ -113,7 +128,7 @@ function parseCbxHtml(html: string) {
   if (!html) return result;
 
   try {
-    const $ = cheerio.load(html);
+    const $ = load(html);
 
     $('table tr').each((_, row) => {
       const text = $(row).text().toLowerCase();
@@ -140,6 +155,12 @@ function parseCbxHtml(html: string) {
         });
       }
     });
+
+    // Try name or state from CBX profile
+    const headerTitle = $('h1, h2, .nome-jogador').first().text().trim();
+    if (headerTitle && !headerTitle.toLowerCase().includes('cbx') && headerTitle.length > 3) {
+      result.name = headerTitle;
+    }
   } catch {
     // Ignore cheerio error
   }
@@ -147,10 +168,36 @@ function parseCbxHtml(html: string) {
   return result;
 }
 
+async function getParsedBody(req: any): Promise<any> {
+  if (req.body) {
+    if (typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+      return req.body;
+    }
+    try {
+      const raw = Buffer.isBuffer(req.body) ? req.body.toString('utf-8') : String(req.body);
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+
+  try {
+    const buffers: Buffer[] = [];
+    for await (const chunk of req) {
+      buffers.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+    }
+    const raw = Buffer.concat(buffers).toString('utf-8');
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
 export default async function handler(req: any, res: any) {
+  // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -161,7 +208,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+    const body = await getParsedBody(req);
     const { fideId, fideUrl, cbxId, cbxUrl, rawSnippet } = body;
 
     const result = {
@@ -188,6 +235,7 @@ export default async function handler(req: any, res: any) {
       },
     };
 
+    // 0. Direct pasted snippet
     if (rawSnippet) {
       const fideParsed = parseFideHtml(rawSnippet);
       const cbxParsed = parseCbxHtml(rawSnippet);
@@ -204,13 +252,17 @@ export default async function handler(req: any, res: any) {
     const cleanCbxId = cbxId?.toString().trim();
     if (!targetCbxUrl && cleanCbxId) {
       targetCbxUrl = `https://www.cbx.org.br/jogador/${encodeURIComponent(cleanCbxId)}`;
+    } else if (targetCbxUrl && !targetCbxUrl.startsWith('http')) {
+      targetCbxUrl = `https://www.cbx.org.br/jogador/${encodeURIComponent(targetCbxUrl)}`;
     }
+
     if (targetCbxUrl) {
       try {
         const cbxRes = await fetch(targetCbxUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'pt-BR,pt;q=0.9',
           },
           signal: AbortSignal.timeout(4500),
         });
@@ -218,6 +270,8 @@ export default async function handler(req: any, res: any) {
           const html = await cbxRes.text();
           const parsed = parseCbxHtml(html);
           result.cbx = { ...result.cbx, ...parsed, error: null };
+        } else {
+          result.cbx.error = `CBX HTTP ${cbxRes.status}`;
         }
       } catch (err: any) {
         result.cbx.error = err?.message || 'Erro ao consultar CBX';
@@ -230,12 +284,14 @@ export default async function handler(req: any, res: any) {
     if (!targetFideUrl && cleanFideId) {
       targetFideUrl = `https://ratings.fide.com/profile/${encodeURIComponent(cleanFideId)}`;
     }
+
     if (targetFideUrl) {
       let fideHtml: string | null = null;
       const sources = [
         targetFideUrl,
         `https://api.allorigins.win/raw?url=${encodeURIComponent(targetFideUrl)}`,
         `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetFideUrl)}`,
+        `https://corsproxy.io/?url=${encodeURIComponent(targetFideUrl)}`,
       ];
 
       for (const url of sources) {
@@ -249,7 +305,7 @@ export default async function handler(req: any, res: any) {
           });
           if (res.ok) {
             const text = await res.text();
-            if (text && text.length > 100 && (text.includes('profile-') || text.includes('STANDARD') || text.includes('fide'))) {
+            if (text && text.length > 100 && (text.includes('profile-') || text.includes('STANDARD') || text.includes('fide') || text.includes('ratings.fide.com'))) {
               fideHtml = text;
               break;
             }
@@ -260,6 +316,8 @@ export default async function handler(req: any, res: any) {
       if (fideHtml) {
         const parsed = parseFideHtml(fideHtml);
         result.fide = { ...result.fide, ...parsed, error: null };
+      } else {
+        result.fide.error = 'Não foi possível baixar da FIDE automaticamente (bloqueio Cloudflare). Utilize a opção "Colar HTML" ou preencha manualmente.';
       }
     }
 
@@ -268,6 +326,7 @@ export default async function handler(req: any, res: any) {
       data: result,
     });
   } catch (error: any) {
+    console.error('API scrape-ratings error:', error);
     return res.status(500).json({
       success: false,
       error: error?.message || 'Erro ao processar raspagem de dados',
