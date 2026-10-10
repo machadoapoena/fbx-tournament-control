@@ -27,13 +27,35 @@ interface StatsOverviewProps {
 
 type SpotlightCategory = 'TODOS' | 'SUB10' | 'SUB14' | 'SUB20';
 type SpotlightSystem = 'fide' | 'cbx';
+type SpotlightModality = 'standard' | 'rapid' | 'blitz';
 
-const getFideStandardRating = (p: Player): number => {
-  return p.ratingFideStandard ?? p.ratingFide ?? 0;
+const getPlayerRating = (player: Player, system: SpotlightSystem, modality: SpotlightModality): number => {
+  if (system === 'fide') {
+    if (modality === 'standard') return player.ratingFideStandard ?? player.ratingFide ?? 0;
+    if (modality === 'rapid') return player.ratingFideRapid ?? 0;
+    if (modality === 'blitz') return player.ratingFideBlitz ?? 0;
+  } else {
+    if (modality === 'standard') return player.ratingCbxStandard ?? player.ratingCbx ?? 0;
+    if (modality === 'rapid') return player.ratingCbxRapid ?? 0;
+    if (modality === 'blitz') return player.ratingCbxBlitz ?? 0;
+  }
+  return 0;
 };
 
-const getCbxStandardRating = (p: Player): number => {
-  return p.ratingCbxStandard ?? p.ratingCbx ?? 0;
+const getModalityLabel = (modality: SpotlightModality): string => {
+  switch (modality) {
+    case 'standard': return 'Standard';
+    case 'rapid': return 'Rápido';
+    case 'blitz': return 'Blitz';
+  }
+};
+
+const getModalitySublabel = (modality: SpotlightModality): string => {
+  switch (modality) {
+    case 'standard': return 'Clássico / Pensado';
+    case 'rapid': return 'Rápido';
+    case 'blitz': return 'Relâmpago';
+  }
 };
 
 export const StatsOverview: React.FC<StatsOverviewProps> = ({
@@ -51,14 +73,13 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
   } | null>(null);
 
   const [spotlightSystem, setSpotlightSystem] = useState<SpotlightSystem>('fide');
+  const [spotlightModality, setSpotlightModality] = useState<SpotlightModality>('standard');
   const [spotlightCategory, setSpotlightCategory] = useState<SpotlightCategory>('TODOS');
 
   const spotlightPlayers = useMemo(() => {
-    const getRating = spotlightSystem === 'fide' ? getFideStandardRating : getCbxStandardRating;
-
     return [...players]
       .filter((p) => {
-        const rating = getRating(p);
+        const rating = getPlayerRating(p, spotlightSystem, spotlightModality);
         if (rating <= 0) return false;
 
         if (spotlightCategory === 'TODOS') return true;
@@ -77,12 +98,19 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
         }
         return true;
       })
-      .sort((a, b) => getRating(b) - getRating(a))
+      .sort((a, b) => getPlayerRating(b, spotlightSystem, spotlightModality) - getPlayerRating(a, spotlightSystem, spotlightModality))
       .slice(0, 5);
-  }, [players, spotlightCategory, spotlightSystem]);
+  }, [players, spotlightCategory, spotlightSystem, spotlightModality]);
 
   const hasAnySpotlightPlayers = useMemo(() => {
-    return players.some((p) => getFideStandardRating(p) > 0 || getCbxStandardRating(p) > 0);
+    return players.some((p) => 
+      (p.ratingFideStandard ?? p.ratingFide ?? 0) > 0 ||
+      (p.ratingFideRapid ?? 0) > 0 ||
+      (p.ratingFideBlitz ?? 0) > 0 ||
+      (p.ratingCbxStandard ?? p.ratingCbx ?? 0) > 0 ||
+      (p.ratingCbxRapid ?? 0) > 0 ||
+      (p.ratingCbxBlitz ?? 0) > 0
+    );
   }, [players]);
 
   // Compute players with most participations in tournaments with status 'Finalizado'
@@ -422,7 +450,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                   } animate-pulse`}
                 ></span>
                 <h2 className="text-base sm:text-lg font-bold text-stone-900 font-sans">
-                  Destaques por Rating {spotlightSystem === 'fide' ? 'FIDE' : 'CBX'}
+                  Destaques por Rating {spotlightSystem === 'fide' ? 'FIDE' : 'CBX'} • {getModalityLabel(spotlightModality)}
                 </h2>
                 <span
                   className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
@@ -435,14 +463,12 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                 </span>
               </div>
               <p className="text-xs text-stone-600 mt-0.5">
-                {spotlightSystem === 'fide'
-                  ? 'Top 5 maiores pontuações Elo Standard (Clássico / Pensado) oficiais FIDE'
-                  : 'Top 5 maiores pontuações de rating Clássico (Pensado) oficiais CBX'}
+                Top 5 maiores pontuações {spotlightSystem === 'fide' ? 'FIDE' : 'CBX'} {getModalityLabel(spotlightModality)} ({getModalitySublabel(spotlightModality)})
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2.5">
-              {/* Classification Option: FIDE vs CBX */}
+              {/* Classification System: FIDE vs CBX */}
               <div className="inline-flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200/80 shadow-2xs">
                 <button
                   type="button"
@@ -478,6 +504,28 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                 </button>
               </div>
 
+              {/* Modality Option: Standard vs Rápido vs Blitz */}
+              <div className="inline-flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200/80 shadow-2xs">
+                {(['standard', 'rapid', 'blitz'] as const).map((mod) => {
+                  const isActive = spotlightModality === mod;
+                  const label = mod === 'standard' ? 'Standard' : mod === 'rapid' ? 'Rápido' : 'Blitz';
+                  return (
+                    <button
+                      key={mod}
+                      type="button"
+                      onClick={() => setSpotlightModality(mod)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-stone-900 text-white shadow-2xs'
+                          : 'text-stone-600 hover:text-stone-950 hover:bg-stone-200/70'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Category tags: TODOS, SUB10, SUB14, SUB20 */}
               <div className="inline-flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200/80">
                 {(['TODOS', 'SUB10', 'SUB14', 'SUB20'] as const).map((cat) => {
@@ -511,10 +559,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
           {spotlightPlayers.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
               {spotlightPlayers.map((player, idx) => {
-                const currentRating =
-                  spotlightSystem === 'fide'
-                    ? getFideStandardRating(player)
-                    : getCbxStandardRating(player);
+                const currentRating = getPlayerRating(player, spotlightSystem, spotlightModality);
                 const age = player.birthDate ? calculateAge(player.birthDate) : null;
                 const fideUrl =
                   player.fideUrl ||
@@ -613,14 +658,16 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                     <div className="mt-3.5 pt-2.5 border-t border-stone-200/90 flex items-center justify-between">
                       <div className="flex flex-col">
                         <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-tight">
-                          {spotlightSystem === 'fide' ? 'FIDE Standard' : 'CBX Clássico'}
+                          {spotlightSystem === 'fide' ? 'FIDE' : 'CBX'} {getModalityLabel(spotlightModality)}
                         </span>
                         <span
                           className={`text-[9px] font-semibold ${
                             spotlightSystem === 'fide' ? 'text-emerald-700' : 'text-blue-700'
                           }`}
                         >
-                          {spotlightSystem === 'fide' ? 'Internacional' : 'Nacional'}
+                          {spotlightModality === 'standard'
+                            ? (spotlightSystem === 'fide' ? 'Clássico / Internacional' : 'Clássico / Nacional')
+                            : getModalitySublabel(spotlightModality)}
                         </span>
                       </div>
                       <span
@@ -642,7 +689,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
               <p className="text-sm font-semibold text-stone-700">
                 Nenhum atleta na categoria{' '}
                 <span className="font-mono font-bold">{spotlightCategory}</span> com rating{' '}
-                {spotlightSystem === 'fide' ? 'FIDE Standard' : 'CBX Clássico'} cadastrado.
+                <span className="font-bold">{spotlightSystem === 'fide' ? 'FIDE' : 'CBX'} {getModalityLabel(spotlightModality)}</span> cadastrado.
               </p>
               <p className="text-xs text-stone-500 mt-1">
                 {spotlightSystem === 'fide'
