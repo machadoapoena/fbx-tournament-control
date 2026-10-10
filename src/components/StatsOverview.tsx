@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Player, Tournament } from '../types/chess';
+import { Player, Tournament, HallOfFamePlayer, PlayerPodiumPlacement } from '../types/chess';
 import { calculateAge } from '../lib/exportUtils';
 import { AgeGroupPlayersModal } from './AgeGroupPlayersModal';
+import { HallOfFameModal } from './HallOfFameModal';
 import { 
   Users, 
   Award, 
@@ -75,6 +76,98 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
   const [spotlightSystem, setSpotlightSystem] = useState<SpotlightSystem>('fide');
   const [spotlightModality, setSpotlightModality] = useState<SpotlightModality>('standard');
   const [spotlightCategory, setSpotlightCategory] = useState<SpotlightCategory>('TODOS');
+  const [selectedHallOfFamePlayer, setSelectedHallOfFamePlayer] = useState<HallOfFamePlayer | null>(null);
+
+  // Compute Hall da Fama (players with Top-3 podium finishes exclusively in finished tournaments)
+  const hallOfFamePlayers = useMemo<HallOfFamePlayer[]>(() => {
+    // Strictly filter tournaments that are finished ('Finalizado')
+    const finishedTournaments = (tournaments || []).filter(
+      (t) => t.status === 'Finalizado'
+    );
+
+    if (finishedTournaments.length === 0) return [];
+
+    const podiumMap = new Map<string, HallOfFamePlayer>();
+
+    finishedTournaments.forEach((tourn) => {
+      if (!tourn.standings || tourn.standings.length === 0) return;
+
+      tourn.standings.forEach((st) => {
+        // Only top 3 (1º, 2º, 3º lugar) count as podium
+        if (!st.rank || st.rank < 1 || st.rank > 3) return;
+
+        // Try matching with player in players list
+        const matched = players.find(
+          (p) =>
+            (p.id && p.id === st.playerId) ||
+            (p.fideId && st.fideId && p.fideId === st.fideId) ||
+            (p.cbxId && st.cbxId && p.cbxId === st.cbxId) ||
+            (p.name.trim().toLowerCase() === st.playerName.trim().toLowerCase())
+        );
+
+        const playerId = matched?.id || st.playerId || st.fideId || st.playerName.trim().toLowerCase();
+        const playerName = matched?.name || st.playerName;
+        const playerTitle = matched?.title || st.title;
+        const playerGender = matched?.gender;
+        const playerState = matched?.state;
+        const playerFideId = matched?.fideId || st.fideId;
+        const playerCbxId = matched?.cbxId || st.cbxId;
+
+        const placement: PlayerPodiumPlacement = {
+          tournamentId: tourn.id,
+          tournamentName: tourn.name,
+          startDate: tourn.startDate,
+          endDate: tourn.endDate,
+          city: tourn.city,
+          state: tourn.state,
+          type: tourn.type,
+          timeControl: tourn.timeControl,
+          rank: st.rank,
+          points: st.points,
+          buchholz: st.buchholz,
+          sonnebornBerger: st.sonnebornBerger,
+          wins: st.wins,
+        };
+
+        if (!podiumMap.has(playerId)) {
+          podiumMap.set(playerId, {
+            id: playerId,
+            name: playerName,
+            title: playerTitle,
+            gender: playerGender,
+            state: playerState,
+            fideId: playerFideId,
+            cbxId: playerCbxId,
+            totalPodiums: 0,
+            goldCount: 0,
+            silverCount: 0,
+            bronzeCount: 0,
+            placements: [],
+          });
+        }
+
+        const entry = podiumMap.get(playerId)!;
+        entry.placements.push(placement);
+        entry.totalPodiums += 1;
+        if (st.rank === 1) entry.goldCount += 1;
+        else if (st.rank === 2) entry.silverCount += 1;
+        else if (st.rank === 3) entry.bronzeCount += 1;
+      });
+    });
+
+    return Array.from(podiumMap.values()).sort((a, b) => {
+      if (b.totalPodiums !== a.totalPodiums) return b.totalPodiums - a.totalPodiums;
+      if (b.goldCount !== a.goldCount) return b.goldCount - a.goldCount;
+      if (b.silverCount !== a.silverCount) return b.silverCount - a.silverCount;
+      if (b.bronzeCount !== a.bronzeCount) return b.bronzeCount - a.bronzeCount;
+      return a.name.localeCompare(b.name);
+    });
+  }, [tournaments, players]);
+
+  // Top 3 players in Hall of Fame
+  const top3HallOfFame = useMemo(() => {
+    return hallOfFamePlayers.slice(0, 3);
+  }, [hallOfFamePlayers]);
 
   const spotlightPlayers = useMemo(() => {
     return [...players]
@@ -701,6 +794,122 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
         </div>
       )}
 
+      {/* Hall da Fama - Compacto e Elegante (Top 3 em Torneios Finalizados) */}
+      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-stone-200 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700 shadow-2xs">
+              <Trophy className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-bold text-stone-900 font-sans">
+                  Hall da Fama
+                </h2>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                  Top 3 • Torneios Finalizados
+                </span>
+              </div>
+              <p className="text-xs text-stone-700 mt-0.5">
+                Os 3 maiores medalhistas considerando exclusivamente competições finalizadas no Firebase • Clique para ver detalhes dos pódios
+              </p>
+            </div>
+          </div>
+
+          {top3HallOfFame.length > 0 && (
+            <div className="text-xs text-stone-700 font-mono flex items-center gap-1.5 self-start sm:self-auto px-2 py-1 bg-stone-50 rounded-lg border border-stone-200/80">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Top 3 laureados</span>
+            </div>
+          )}
+        </div>
+
+        {top3HallOfFame.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
+            {top3HallOfFame.map((player, idx) => {
+              const isTop1 = idx === 0;
+              const isTop2 = idx === 1;
+              const isTop3 = idx === 2;
+
+              return (
+                <button
+                  key={player.id}
+                  type="button"
+                  onClick={() => setSelectedHallOfFamePlayer(player)}
+                  className={`group p-4 rounded-2xl border transition-all text-left flex flex-col justify-between cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-amber-400 ${
+                    isTop1
+                      ? 'bg-gradient-to-b from-amber-50/80 via-white to-amber-50/30 border-amber-300 hover:border-amber-400 hover:shadow-md'
+                      : isTop2
+                      ? 'bg-gradient-to-b from-slate-50/80 via-white to-stone-50 border-slate-300 hover:border-slate-400 hover:shadow-md'
+                      : 'bg-gradient-to-b from-orange-50/60 via-white to-amber-50/20 border-amber-700/30 hover:border-amber-700/50 hover:shadow-md'
+                  }`}
+                  title={`Ver histórico de colocações no top 3 de ${player.name}`}
+                >
+                  <div>
+                    {/* Header: Rank Medal Badge */}
+                    <div className="flex items-center justify-between gap-1 mb-2.5">
+                      {isTop1 ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400 text-stone-950 font-black text-xs shadow-2xs border border-amber-500 font-mono">
+                          <span>🥇</span>
+                          <span>1º Lugar • Ouro</span>
+                        </span>
+                      ) : isTop2 ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-200 text-slate-900 font-black text-xs shadow-2xs border border-slate-300 font-mono">
+                          <span>🥈</span>
+                          <span>2º Lugar • Prata</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-700 text-amber-50 font-black text-xs shadow-2xs border border-amber-800 font-mono">
+                          <span>🥉</span>
+                          <span>3º Lugar • Bronze</span>
+                        </span>
+                      )}
+
+                      <span className="text-[10px] font-mono text-stone-700 group-hover:text-stone-950 font-semibold transition-colors">
+                        Ver pódios →
+                      </span>
+                    </div>
+
+                    {/* Nome do jogador */}
+                    <h3
+                      className={`font-extrabold text-sm sm:text-base line-clamp-1 mb-3 group-hover:text-amber-800 transition-colors ${
+                        player.gender === 'F' ? 'text-pink-700' : 'text-stone-900'
+                      }`}
+                      title={player.name}
+                    >
+                      {player.name}
+                    </h3>
+                  </div>
+
+                  {/* Quantidade de pódios */}
+                  <div className="flex items-center justify-between pt-3 border-t border-stone-200/80 bg-white/70 px-2 py-1.5 rounded-xl">
+                    <span className="text-[10px] uppercase font-bold text-stone-700 tracking-wider">
+                      Total de Pódios
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300/80 group-hover:bg-amber-400 group-hover:text-stone-950 transition-colors shadow-2xs">
+                      <Trophy className="w-3 h-3 text-amber-600 group-hover:text-stone-950" />
+                      <span>{player.totalPodiums} {player.totalPodiums === 1 ? 'pódio' : 'pódios'}</span>
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="py-8 px-4 text-center rounded-xl bg-stone-50/70 border border-dashed border-stone-200">
+            <div className="w-9 h-9 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-2">
+              <Trophy className="w-4 h-4" />
+            </div>
+            <p className="text-sm font-semibold text-stone-700">
+              Nenhum torneio com status "Finalizado" com pódio registrado no Firebase ainda.
+            </p>
+            <p className="text-xs text-stone-500 mt-1 max-w-md mx-auto">
+              O Hall da Fama considera exclusivamente competições com status <b className="text-emerald-700">FINALIZADO</b>. Ao concluir e registrar o resultado final de torneios na aba <b>Torneios</b>, os 3 maiores medalhistas aparecerão automaticamente aqui.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* Ranking de Participação em Torneios Finalizados */}
       <div className="bg-white rounded-2xl p-6 border border-stone-200 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -1072,6 +1281,15 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
           groupTitle={selectedAgeGroup.label}
           groupDesc={selectedAgeGroup.desc}
           players={selectedAgeGroup.players}
+        />
+      )}
+
+      {/* Hall da Fama Modal */}
+      {selectedHallOfFamePlayer && (
+        <HallOfFameModal
+          isOpen={!!selectedHallOfFamePlayer}
+          onClose={() => setSelectedHallOfFamePlayer(null)}
+          player={selectedHallOfFamePlayer}
         />
       )}
     </div>

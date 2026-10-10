@@ -74,6 +74,37 @@ export interface TournamentStanding {
   wins?: number;
 }
 
+export interface PlayerPodiumPlacement {
+  tournamentId?: string;
+  tournamentName: string;
+  startDate: string;
+  endDate?: string;
+  city?: string;
+  state?: string;
+  type?: TournamentCategory;
+  timeControl?: string;
+  rank: number; // 1, 2, or 3
+  points: number;
+  buchholz?: number;
+  sonnebornBerger?: number;
+  wins?: number;
+}
+
+export interface HallOfFamePlayer {
+  id: string;
+  name: string;
+  title?: string;
+  gender?: Gender;
+  state?: string;
+  fideId?: string;
+  cbxId?: string;
+  totalPodiums: number;
+  goldCount: number;
+  silverCount: number;
+  bronzeCount: number;
+  placements: PlayerPodiumPlacement[];
+}
+
 export type TournamentCategory = 'blitz' | 'rapid' | 'standard';
 
 export interface Tournament {
