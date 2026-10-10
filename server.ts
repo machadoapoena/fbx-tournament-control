@@ -393,6 +393,56 @@ function normalizePeriod(raw: string): string {
   return s;
 }
 
+function parsePeriodYearMonth(raw: string): { year: number; month: number } {
+  if (!raw) return { year: 0, month: 0 };
+  const s = String(raw).trim();
+
+  const monthMap: Record<string, number> = {
+    jan: 1, feb: 2, fev: 2, mar: 3, apr: 4, abr: 4,
+    may: 5, mai: 5, jun: 6, jul: 7, aug: 8, ago: 8,
+    sep: 9, set: 9, oct: 10, out: 10, nov: 11, dec: 12, dez: 12
+  };
+
+  const yFirst = s.match(/^(\d{4})[-/]([a-zA-Z]{3,}|\d{1,2})/);
+  if (yFirst) {
+    const y = parseInt(yFirst[1], 10);
+    const mPart = yFirst[2].toLowerCase();
+    const m = monthMap[mPart.slice(0, 3)] || parseInt(mPart, 10) || 1;
+    return { year: y, month: Math.min(12, Math.max(1, m)) };
+  }
+
+  const mFirst = s.match(/^([a-zA-Z]{3,}|\d{1,2})[-/](\d{4})/);
+  if (mFirst) {
+    const y = parseInt(mFirst[2], 10);
+    const mPart = mFirst[1].toLowerCase();
+    const m = monthMap[mPart.slice(0, 3)] || parseInt(mPart, 10) || 1;
+    return { year: y, month: Math.min(12, Math.max(1, m)) };
+  }
+
+  const wordMatch = s.match(/([a-zA-Z]{3,})\s+(\d{4})/) || s.match(/(\d{4})\s+([a-zA-Z]{3,})/);
+  if (wordMatch) {
+    const isYearFirst = /^\d{4}$/.test(wordMatch[1]);
+    const y = parseInt(isYearFirst ? wordMatch[1] : wordMatch[2], 10);
+    const mStr = (isYearFirst ? wordMatch[2] : wordMatch[1]).toLowerCase().slice(0, 3);
+    const m = monthMap[mStr] || 1;
+    return { year: y, month: m };
+  }
+
+  const yMatch = s.match(/\b(19\d{2}|20\d{2})\b/);
+  return { year: yMatch ? parseInt(yMatch[1], 10) : 0, month: 1 };
+}
+
+function sortHistoryChronological<T extends { period: string }>(items: T[], ascending = true): T[] {
+  if (!items || items.length <= 1) return items ? [...items] : [];
+  return [...items].sort((a, b) => {
+    const da = parsePeriodYearMonth(a.period);
+    const db = parsePeriodYearMonth(b.period);
+    const valA = da.year * 100 + da.month;
+    const valB = db.year * 100 + db.month;
+    return ascending ? valA - valB : valB - valA;
+  });
+}
+
 function parseFideHistory(htmlOrJson: string): Array<{ period: string; standard: number | null; rapid: number | null; blitz: number | null }> {
   const historyMap = new Map<string, { period: string; standard: number | null; rapid: number | null; blitz: number | null }>();
   if (!htmlOrJson) return [];
@@ -929,6 +979,9 @@ async function startServer() {
           cbxHistory = generated;
         }
       }
+
+      cbxHistory = sortHistoryChronological(cbxHistory, true);
+      fideHistory = sortHistoryChronological(fideHistory, true);
 
       res.json({
         success: true,
