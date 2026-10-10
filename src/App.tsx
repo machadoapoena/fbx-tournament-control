@@ -325,6 +325,7 @@ export default function App() {
                 onUpdateTournament={handleUpdateTournament}
                 onDeleteTournament={handleDeleteTournament}
                 onUpdateStandings={handleUpdateStandings}
+                onViewPlayer={(p) => setSelectedProfilePlayer(p)}
               />
             )}
 

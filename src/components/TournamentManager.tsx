@@ -38,8 +38,10 @@ import {
   Timer,
   Search,
   Check,
-  UserMinus
+  UserMinus,
+  TrendingUp
 } from 'lucide-react';
+import { PlayerProfileModal } from './PlayerProfileModal';
 
 interface TournamentManagerProps {
   tournaments: Tournament[];
@@ -49,6 +51,7 @@ interface TournamentManagerProps {
   onUpdateTournament: (id: string, tournament: Partial<Tournament>) => Promise<void>;
   onDeleteTournament: (id: string) => Promise<void>;
   onUpdateStandings: (id: string, standings: TournamentStanding[]) => Promise<void>;
+  onViewPlayer?: (player: Player) => void;
 }
 
 export const TournamentManager: React.FC<TournamentManagerProps> = ({
@@ -59,12 +62,56 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
   onUpdateTournament,
   onDeleteTournament,
   onUpdateStandings,
+  onViewPlayer,
 }) => {
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(
     tournaments.length > 0 ? tournaments[0] : null
   );
 
   const activeTournament = selectedTournament || (tournaments.length > 0 ? tournaments[0] : null);
+
+  const [internalProfilePlayer, setInternalProfilePlayer] = useState<Player | null>(null);
+
+  const handleViewPlayer = (player: Player) => {
+    if (onViewPlayer) {
+      onViewPlayer(player);
+    } else {
+      setInternalProfilePlayer(player);
+    }
+  };
+
+  const handleViewPlayerFromStanding = (standing: TournamentStanding, matched?: Player | null) => {
+    if (matched) {
+      handleViewPlayer(matched);
+      return;
+    }
+
+    const isFemale = standing.playerName.toLowerCase().includes('maria') ||
+      standing.playerName.toLowerCase().includes('ana') ||
+      standing.playerName.toLowerCase().includes('laura') ||
+      standing.playerName.toLowerCase().includes('julia');
+
+    const fallbackPlayer: Player = {
+      id: standing.playerId || `p-${standing.fideId || standing.cbxId || standing.playerName}`,
+      name: standing.playerName,
+      title: (standing.title as any) || 'Sem Título',
+      fideId: standing.fideId || '',
+      cbxId: standing.cbxId || '',
+      gender: isFemale ? 'F' : 'M',
+      birthDate: '',
+      country: 'BRA',
+      state: activeTournament?.state || 'DF',
+      ratingFideStandard: 0,
+      ratingFideRapid: 0,
+      ratingFideBlitz: 0,
+      ratingCbxStandard: 0,
+      ratingCbxRapid: 0,
+      ratingCbxBlitz: 0,
+      fideUrl: standing.fideId ? `https://ratings.fide.com/profile/${standing.fideId}` : '',
+      cbxUrl: standing.cbxId ? `https://www.cbx.org.br/jogador/${standing.cbxId}` : '',
+    };
+    handleViewPlayer(fallbackPlayer);
+  };
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -797,8 +844,18 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                                   s.rank || idx + 1
                                 )}
                               </td>
-                              <td className={`py-2.5 px-3 font-bold ${isFemale ? 'text-pink-600' : 'text-stone-900'}`}>
-                                {s.playerName}
+                              <td className="py-2.5 px-3">
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewPlayerFromStanding(s, matchedPlayer)}
+                                  className={`font-bold flex items-center gap-1.5 text-left group hover:underline cursor-pointer transition-colors ${
+                                    isFemale ? 'text-pink-600 hover:text-pink-700' : 'text-stone-900 hover:text-emerald-700'
+                                  }`}
+                                  title={`Ver perfil e histórico de rating de ${s.playerName}`}
+                                >
+                                  <span className="truncate">{s.playerName}</span>
+                                  <TrendingUp className="w-3.5 h-3.5 text-stone-400 group-hover:text-emerald-600 transition-colors opacity-70 group-hover:opacity-100 shrink-0" />
+                                </button>
                               </td>
                               <td className="py-2.5 px-2 text-center">
                                 {s.title && s.title !== 'Sem Título' ? (
@@ -1354,9 +1411,17 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                       >
                         <div className="flex-1 min-w-0 pr-3">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className={`font-bold truncate ${p.gender === 'F' ? 'text-pink-600' : 'text-stone-900'}`}>
-                              {p.name}
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleViewPlayer(p)}
+                              className={`font-bold truncate text-left hover:underline cursor-pointer flex items-center gap-1 group ${
+                                p.gender === 'F' ? 'text-pink-600 hover:text-pink-700' : 'text-stone-900 hover:text-emerald-700'
+                              }`}
+                              title={`Ver perfil e histórico de rating de ${p.name}`}
+                            >
+                              <span className="truncate">{p.name}</span>
+                              <TrendingUp className="w-3 h-3 text-stone-400 group-hover:text-emerald-600 shrink-0 opacity-70 group-hover:opacity-100" />
+                            </button>
                             {p.title && p.title !== 'Sem Título' && (
                               <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-stone-900 text-white">
                                 {p.title}
@@ -1581,6 +1646,16 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Fallback Player Profile Modal if not handled externally */}
+      {internalProfilePlayer && (
+        <PlayerProfileModal
+          player={internalProfilePlayer}
+          isOpen={!!internalProfilePlayer}
+          onClose={() => setInternalProfilePlayer(null)}
+          tournaments={tournaments}
+        />
       )}
     </div>
   );
