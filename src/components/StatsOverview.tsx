@@ -4,6 +4,7 @@ import { calculateAge } from '../lib/exportUtils';
 import { findMatchingPlayer, normalizeName } from '../lib/playerMatching';
 import { AgeGroupPlayersModal } from './AgeGroupPlayersModal';
 import { HallOfFameModal } from './HallOfFameModal';
+import { TitledPlayersModal } from './TitledPlayersModal';
 import { 
   Users, 
   Award, 
@@ -25,6 +26,7 @@ interface StatsOverviewProps {
   onSelectFilter?: (type: 'gender' | 'title' | 'state', value: string) => void;
   onNavigateToPlayers: () => void;
   onNavigateToTournaments?: () => void;
+  onViewPlayer?: (player: Player) => void;
 }
 
 type SpotlightCategory = 'TODOS' | 'SUB10' | 'SUB14' | 'SUB20';
@@ -66,6 +68,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
   onSelectFilter,
   onNavigateToPlayers,
   onNavigateToTournaments,
+  onViewPlayer,
 }) => {
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<{
     id: string;
@@ -78,6 +81,8 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
   const [spotlightModality, setSpotlightModality] = useState<SpotlightModality>('standard');
   const [spotlightCategory, setSpotlightCategory] = useState<SpotlightCategory>('TODOS');
   const [selectedHallOfFamePlayer, setSelectedHallOfFamePlayer] = useState<HallOfFamePlayer | null>(null);
+  const [isTitledModalOpen, setIsTitledModalOpen] = useState(false);
+  const [selectedTitleFilter, setSelectedTitleFilter] = useState<string | null>(null);
 
   // Compute Hall da Fama (players with Top-3 podium finishes exclusively in finished tournaments)
   const hallOfFamePlayers = useMemo<HallOfFamePlayer[]>(() => {
@@ -484,23 +489,36 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
           </div>
         </div>
 
-        {/* Grandmasters & Masters */}
-        <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-xs hover:border-stone-300 transition-all">
+        {/* Grandmasters & Masters - Titulados FIDE/CBX */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedTitleFilter(null);
+            setIsTitledModalOpen(true);
+          }}
+          className="bg-white rounded-2xl p-5 border border-stone-200 shadow-xs hover:border-amber-400 hover:shadow-md transition-all text-left group cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+          title="Clique para abrir a lista completa dos enxadristas titulados FIDE/CBX"
+        >
           <div className="flex items-center justify-between text-stone-500 mb-3">
-            <span className="text-xs font-semibold uppercase tracking-wider">Titulados FIDE/CBX</span>
-            <div className="w-8 h-8 rounded-lg bg-stone-100 flex items-center justify-center text-stone-800">
+            <span className="text-xs font-semibold uppercase tracking-wider group-hover:text-stone-900 transition-colors">Titulados FIDE/CBX</span>
+            <div className="w-8 h-8 rounded-lg bg-stone-100 group-hover:bg-amber-100 group-hover:text-amber-800 flex items-center justify-center text-stone-800 transition-colors">
               <Crown className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-3xl font-extrabold text-stone-900 font-sans tracking-tight">
-            {stats.titledCount}
+          <div className="flex items-baseline justify-between">
+            <div className="text-3xl font-extrabold text-stone-900 font-sans tracking-tight group-hover:text-amber-700 transition-colors">
+              {stats.titledCount}
+            </div>
+            <span className="text-[11px] font-semibold text-stone-500 group-hover:text-stone-900 transition-colors flex items-center gap-0.5">
+              Ver lista <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            </span>
           </div>
-          <div className="flex items-center gap-1.5 mt-1 text-xs text-stone-700">
+          <div className="flex items-center gap-1.5 mt-2 text-xs text-stone-700">
             <span className="px-1.5 py-0.5 rounded bg-stone-100 font-bold text-stone-800">{stats.gmCount} GM</span>
             <span className="px-1.5 py-0.5 rounded bg-stone-100 font-bold text-stone-800">{stats.imCount} IM</span>
             <span className="px-1.5 py-0.5 rounded bg-stone-100 font-bold text-stone-800">{stats.wgmCount} WGM/WIM</span>
           </div>
-        </div>
+        </button>
 
         {/* Average Age */}
         <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-xs hover:border-stone-300 transition-all">
@@ -1205,7 +1223,17 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                 <h2 className="text-base font-bold text-stone-900">Titulações Registradas</h2>
                 <p className="text-xs text-stone-700">Títulos oficiais FIDE e CBX</p>
               </div>
-              <Award className="w-4 h-4 text-stone-700" />
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTitleFilter(null);
+                  setIsTitledModalOpen(true);
+                }}
+                className="text-xs font-semibold text-stone-600 hover:text-stone-950 flex items-center gap-1 cursor-pointer hover:underline"
+                title="Abrir listagem dos enxadristas titulados"
+              >
+                Ver titulados <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -1215,8 +1243,17 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                 return (
                   <button
                     key={title}
-                    onClick={() => onSelectFilter && onSelectFilter('title', title)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 transition-colors text-xs font-semibold text-stone-800"
+                    type="button"
+                    onClick={() => {
+                      if (title === 'Sem Título') {
+                        if (onSelectFilter) onSelectFilter('title', title);
+                      } else {
+                        setSelectedTitleFilter(title);
+                        setIsTitledModalOpen(true);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 hover:border-stone-400 transition-colors text-xs font-semibold text-stone-800 cursor-pointer"
+                    title={title === 'Sem Título' ? 'Filtrar jogadores sem título' : `Ver enxadristas com título ${title}`}
                   >
                     <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-mono ${
                       title === 'GM' ? 'bg-stone-900 text-amber-300 font-black' :
@@ -1280,6 +1317,18 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
           player={selectedHallOfFamePlayer}
         />
       )}
+
+      {/* Enxadristas Titulados Modal */}
+      <TitledPlayersModal
+        isOpen={isTitledModalOpen}
+        onClose={() => {
+          setIsTitledModalOpen(false);
+          setSelectedTitleFilter(null);
+        }}
+        players={players}
+        initialTitleFilter={selectedTitleFilter}
+        onViewPlayer={onViewPlayer}
+      />
     </div>
   );
 };

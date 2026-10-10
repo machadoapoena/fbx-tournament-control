@@ -299,6 +299,7 @@ export default function App() {
                 onSelectFilter={handleSelectFilterFromStats}
                 onNavigateToPlayers={() => setActiveTab('players')}
                 onNavigateToTournaments={() => setActiveTab('tournaments')}
+                onViewPlayer={(p) => setSelectedProfilePlayer(p)}
               />
             )}
 
