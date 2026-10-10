@@ -6,6 +6,11 @@ import {
   exportToSwissManagerXML 
 } from '../lib/exportUtils';
 import { 
+  isPlayerEnrolledInTournament, 
+  findMatchingPlayer, 
+  normalizeName 
+} from '../lib/playerMatching';
+import { 
   Swords, 
   Plus, 
   Calendar, 
@@ -175,26 +180,21 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
 
   const handleInstantAddPlayer = async (player: Player) => {
     if (!activeTournament?.id) return;
-    const pId = player.id || player.fideId || player.name;
+    const pId = player.id || player.name;
 
-    // Verify if already registered
-    const isAlreadyRegistered =
-      (activeTournament.participants || []).includes(pId) ||
-      (activeTournament.standings || []).some(
-        (s) => s.playerId === pId || s.playerName === player.name || (player.fideId && s.fideId === player.fideId)
-      );
-
+    // Verify if already registered using robust helper
+    const isAlreadyRegistered = isPlayerEnrolledInTournament(player, activeTournament);
     if (isAlreadyRegistered) return;
 
-    setIsAddingPlayerId(pId);
+    setIsAddingPlayerId(player.id || pId);
     try {
       const currentStandings = activeTournament.standings || [];
       const newStanding: TournamentStanding = {
-        playerId: pId,
+        playerId: player.id || pId,
         playerName: player.name,
         title: player.title,
-        fideId: player.fideId,
-        cbxId: player.cbxId,
+        fideId: player.fideId || '',
+        cbxId: player.cbxId || '',
         points: 0,
         rank: currentStandings.length + 1,
         buchholz: 0,
@@ -202,7 +202,10 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
         wins: 0,
       };
 
-      const updatedParticipants = [...(activeTournament.participants || []), pId];
+      const currentParticipants = activeTournament.participants || [];
+      const updatedParticipants = currentParticipants.includes(player.id || pId)
+        ? currentParticipants
+        : [...currentParticipants, player.id || pId];
       const updatedStandings = [...currentStandings, newStanding];
 
       await onUpdateTournament(activeTournament.id, {
@@ -219,15 +222,18 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     setIsRemovingPlayer(true);
     try {
       const targetId = playerToRemove.playerId;
-      const targetName = playerToRemove.playerName;
-      const targetFide = playerToRemove.fideId;
+      const targetNameNorm = normalizeName(playerToRemove.playerName);
 
       const remainingParticipants = (activeTournament.participants || []).filter(
-        (id) => id !== targetId && id !== targetName && (!targetFide || id !== targetFide)
+        (id) => id !== targetId && normalizeName(id) !== targetNameNorm
       );
 
       const remainingStandings = (activeTournament.standings || [])
-        .filter((s) => s.playerId !== targetId && s.playerName !== targetName)
+        .filter((s) => {
+          if (targetId && s.playerId && s.playerId === targetId) return false;
+          if (s.playerName && normalizeName(s.playerName) === targetNameNorm) return false;
+          return true;
+        })
         .map((s, idx) => ({
           ...s,
           rank: s.rank !== undefined ? s.rank : idx + 1,
@@ -289,9 +295,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
 
     if (standings.length > 0) {
       standings.forEach((s, idx) => {
-        const matched = players.find(
-          (p) => p.id === s.playerId || p.name === s.playerName || (p.fideId && p.fideId === s.fideId)
-        );
+        const matched = findMatchingPlayer(s, players);
         exportList.push({
           id: s.playerId || `p-${idx + 1}`,
           name: s.playerName,
@@ -368,9 +372,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
 
     if (standings.length > 0) {
       standings.forEach((s, idx) => {
-        const matched = players.find(
-          (p) => p.id === s.playerId || p.name === s.playerName || (p.fideId && p.fideId === s.fideId)
-        );
+        const matched = findMatchingPlayer(s, players);
         exportList.push({
           id: s.playerId || `p-${idx + 1}`,
           name: s.playerName,
@@ -766,7 +768,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                         </thead>
                         <tbody className="divide-y divide-stone-100">
                           {activeTournament.standings.map((s, idx) => {
-                            const matchedPlayer = players.find(p => p.id === s.playerId || p.name === s.playerName || (p.fideId && p.fideId === s.fideId));
+                            const matchedPlayer = findMatchingPlayer(s, players);
                             const isFemale = matchedPlayer?.gender === 'F';
                             const fideId = s.fideId || matchedPlayer?.fideId;
                             const cbxId = s.cbxId || matchedPlayer?.cbxId;
@@ -1341,17 +1343,13 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
               ) : (
                 <div className="space-y-1.5">
                   {searchedPlayers.map((p) => {
-                    const pId = p.id || p.fideId || p.name;
-                    const isEnrolled =
-                      (activeTournament?.participants || []).includes(pId) ||
-                      (activeTournament?.standings || []).some(
-                        (s) => s.playerId === pId || s.playerName === p.name || (p.fideId && s.fideId === p.fideId)
-                      );
-                    const isAddingThis = isAddingPlayerId === pId;
+                    const pKey = p.id || p.name;
+                    const isEnrolled = isPlayerEnrolledInTournament(p, activeTournament);
+                    const isAddingThis = isAddingPlayerId === (p.id || pKey);
 
                     return (
                       <div
-                        key={pId}
+                        key={pKey}
                         className="flex items-center justify-between p-2.5 rounded-xl bg-stone-50/70 border border-stone-200 hover:border-stone-300 transition-all text-xs"
                       >
                         <div className="flex-1 min-w-0 pr-3">

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Player, Tournament, HallOfFamePlayer, PlayerPodiumPlacement } from '../types/chess';
 import { calculateAge } from '../lib/exportUtils';
+import { findMatchingPlayer, normalizeName } from '../lib/playerMatching';
 import { AgeGroupPlayersModal } from './AgeGroupPlayersModal';
 import { HallOfFameModal } from './HallOfFameModal';
 import { 
@@ -96,14 +97,8 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
         // Only top 3 (1º, 2º, 3º lugar) count as podium
         if (!st.rank || st.rank < 1 || st.rank > 3) return;
 
-        // Try matching with player in players list
-        const matched = players.find(
-          (p) =>
-            (p.id && p.id === st.playerId) ||
-            (p.fideId && st.fideId && p.fideId === st.fideId) ||
-            (p.cbxId && st.cbxId && p.cbxId === st.cbxId) ||
-            (p.name.trim().toLowerCase() === st.playerName.trim().toLowerCase())
-        );
+        // Try matching with player in players list using robust helper
+        const matched = findMatchingPlayer(st, players);
 
         const playerId = matched?.id || st.playerId || st.fideId || st.playerName.trim().toLowerCase();
         const playerName = matched?.name || st.playerName;
@@ -233,15 +228,9 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
       // 1. From standings
       if (tourn.standings && tourn.standings.length > 0) {
         tourn.standings.forEach((st) => {
-          const matched = players.find(
-            (p) =>
-              (p.id && p.id === st.playerId) ||
-              (p.fideId && st.fideId && p.fideId === st.fideId) ||
-              (p.cbxId && st.cbxId && p.cbxId === st.cbxId) ||
-              (p.name.trim().toLowerCase() === st.playerName.trim().toLowerCase())
-          );
+          const matched = findMatchingPlayer(st, players);
           if (matched) {
-            participantKeysInTourn.add(matched.id || matched.fideId || matched.name);
+            participantKeysInTourn.add(matched.id || matched.name);
           }
         });
       }
@@ -249,15 +238,14 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
       // 2. From participants array
       if (tourn.participants && tourn.participants.length > 0) {
         tourn.participants.forEach((partId) => {
+          const normPart = normalizeName(partId);
           const matched = players.find(
             (p) =>
               (p.id && p.id === partId) ||
-              (p.fideId && p.fideId === partId) ||
-              (p.cbxId && p.cbxId === partId) ||
-              (p.name.trim().toLowerCase() === partId.trim().toLowerCase())
+              (p.name && normalizeName(p.name) === normPart)
           );
           if (matched) {
-            participantKeysInTourn.add(matched.id || matched.fideId || matched.name);
+            participantKeysInTourn.add(matched.id || matched.name);
           }
         });
       }
