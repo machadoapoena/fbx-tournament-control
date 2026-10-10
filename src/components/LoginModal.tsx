@@ -5,8 +5,7 @@ import {
   ShieldCheck, 
   Lock, 
   User, 
-  AlertCircle,
-  Sparkles
+  AlertCircle
 } from 'lucide-react';
 
 interface LoginModalProps {
@@ -28,19 +27,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username.trim() === 'admin' && password === 'fbx@2026') {
+    if (username.trim() === 'fbxadmin' && password === 'xng@2026') {
       setError(null);
       onSuccessLogin();
       onClose();
     } else {
       setError('Credenciais incorretas. Verifique seu login e senha de administrador.');
     }
-  };
-
-  const handleQuickFill = () => {
-    setUsername('admin');
-    setPassword('fbx@2026');
-    setError(null);
   };
 
   return (
@@ -87,7 +80,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Ex: admin"
+                placeholder="Usuário de administrador"
                 className="w-full pl-9 pr-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-900"
               />
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-600" />
@@ -109,20 +102,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               />
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-600" />
             </div>
-          </div>
-
-          {/* Quick Credential Helper */}
-          <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 flex items-center justify-between text-xs">
-            <div className="text-stone-700">
-              Acesso padrão: <span className="font-mono font-bold text-stone-900">admin</span> / <span className="font-mono font-bold text-stone-900">fbx@2026</span>
-            </div>
-            <button
-              type="button"
-              onClick={handleQuickFill}
-              className="text-[11px] text-stone-900 font-bold hover:underline flex items-center gap-1"
-            >
-              <Sparkles className="w-3 h-3 text-amber-500" /> Preencher
-            </button>
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-2">
