@@ -929,10 +929,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
               </h2>
             </div>
             <p className="text-xs text-stone-600 mt-1">
-              Top 5 enxadristas mais assíduos considerando exclusivamente competições com status{' '}
-              <span className="font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                FINALIZADO
-              </span>{' '}
+              Top 5 enxadristas mais assíduos
               ({totalFinishedTournaments} {totalFinishedTournaments === 1 ? 'torneio concluído' : 'torneios concluídos'})
             </p>
           </div>
@@ -1004,33 +1001,26 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                             <span>5º Lugar • Destaque</span>
                           </div>
                         )}
-
-                        {player.state && (
-                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/80 border border-stone-200/70 text-stone-700">
-                            {player.state.toUpperCase()}
-                          </span>
-                        )}
                       </div>
 
-                      {/* 1. Nome do Jogador */}
-                      <h3
-                        className={`font-bold text-sm line-clamp-1 mb-1 ${
-                          player.gender === 'F' ? 'text-pink-700' : 'text-stone-900'
-                        }`}
-                        title={player.name}
-                      >
-                        {player.name}
-                      </h3>
-
-                      {/* 2. Titulação do Jogador */}
-                      <div className="flex items-center gap-1.5 text-xs text-stone-600 flex-wrap min-h-[20px] mb-3">
-                        {player.title && player.title !== 'Sem Título' ? (
-                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-black bg-stone-800 text-amber-300">
+                      {/* Titulação e Nome do Jogador */}
+                      <div className="flex items-center gap-1.5 mb-3 min-h-[26px]">
+                        {player.title && player.title !== 'Sem Título' && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-black bg-stone-800 text-amber-300 shrink-0 shadow-2xs">
                             {player.title}
                           </span>
-                        ) : (
-                          <span className="text-[11px] text-stone-400 font-medium">Sem título</span>
                         )}
+                        <h3
+                          onClick={() => onViewPlayer && onViewPlayer(player)}
+                          className={`font-bold text-sm line-clamp-1 ${
+                            onViewPlayer ? 'cursor-pointer hover:underline' : ''
+                          } ${
+                            player.gender === 'F' ? 'text-pink-700' : 'text-stone-900'
+                          }`}
+                          title={onViewPlayer ? `Ver perfil de ${player.name}` : player.name}
+                        >
+                          {player.name}
+                        </h3>
                       </div>
                     </div>
 
