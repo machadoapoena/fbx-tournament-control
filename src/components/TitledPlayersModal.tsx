@@ -367,7 +367,6 @@ export const TitledPlayersModal: React.FC<TitledPlayersModalProps> = ({
                 <thead>
                   <tr className="border-b border-stone-200 bg-stone-100/80 text-[11px] font-bold text-stone-600 uppercase tracking-wider sticky top-0 z-10 backdrop-blur-xs">
                     <th className="py-3 px-4">Titulação & Jogador</th>
-                    <th className="py-3 px-3 text-center">UF</th>
                     <th className="py-3 px-3 text-center">Rating FIDE Std</th>
                     <th className="py-3 px-3 text-center">Rating CBX Std</th>
                     <th className="py-3 px-3">ID FIDE</th>
@@ -413,13 +412,6 @@ export const TitledPlayersModal: React.FC<TitledPlayersModalProps> = ({
                               {player.club}
                             </div>
                           )}
-                        </td>
-
-                        {/* UF */}
-                        <td className="py-3 px-3 text-center">
-                          <span className="font-mono text-xs font-bold text-stone-800 px-1.5 py-0.5 rounded bg-stone-100 border border-stone-200">
-                            {player.state || 'BRA'}
-                          </span>
                         </td>
 
                         {/* Rating FIDE */}
