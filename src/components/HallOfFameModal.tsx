@@ -56,12 +56,16 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+    <div 
+      className="fixed inset-0 z-50 overflow-y-auto bg-stone-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
+      onClick={onClose}
+    >
       <div 
         className="relative bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-stone-200 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
         role="dialog"
         aria-modal="true"
         aria-labelledby="hall-of-fame-title"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header with decorative ambient gold glow */}
         <div className="relative bg-stone-900 text-white p-6 pb-7 border-b border-stone-800 overflow-hidden">
@@ -72,11 +76,15 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({
           {/* Close button */}
           <button
             type="button"
-            onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-full text-stone-400 hover:text-white hover:bg-stone-800 transition-colors cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="absolute top-4 right-4 z-20 p-2.5 rounded-full text-stone-400 hover:text-white hover:bg-stone-800 transition-colors cursor-pointer"
+            title="Fechar (ESC)"
             aria-label="Fechar modal"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 pointer-events-none" />
           </button>
 
           <div className="relative z-10 flex items-start gap-4">
@@ -102,11 +110,6 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({
                 {player.title && player.title !== 'Sem Título' && (
                   <span className="px-2 py-0.5 rounded-md text-xs font-mono font-black bg-amber-400 text-stone-950 shadow-2xs">
                     {player.title}
-                  </span>
-                )}
-                {player.state && (
-                  <span className="px-2 py-0.5 rounded-md text-xs font-mono font-bold bg-stone-800 text-stone-300 border border-stone-700">
-                    {player.state.toUpperCase()}
                   </span>
                 )}
               </div>
