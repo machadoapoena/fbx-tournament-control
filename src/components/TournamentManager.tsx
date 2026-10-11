@@ -630,7 +630,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
               
               {/* Active Tournament Card Details */}
               <div className="bg-white rounded-2xl p-6 border border-stone-200 shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-5 border-b border-stone-100">
+                <div className="flex flex-col gap-3 pb-5 border-b border-stone-100">
                   <div>
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-stone-100 text-stone-800 border border-stone-200 uppercase">
@@ -655,8 +655,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                     </h2>
                   </div>
 
-                  {/* Actions for Admin */}
-                  <div className="flex flex-wrap items-center gap-2">
+                  {/* Actions placed below the tournament name */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
                     {activeTournament.chessResultsUrl && (
                       <a
                         href={activeTournament.chessResultsUrl}
@@ -704,17 +704,19 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                       <>
                         <button
                           onClick={() => handleOpenEdit(activeTournament)}
-                          className="p-2 text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-xl border border-stone-200 transition-colors"
+                          className="flex items-center gap-1 px-3 py-1.5 text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-xl border border-stone-200 text-xs font-semibold transition-colors"
                           title="Editar dados do torneio"
                         >
-                          <Edit className="w-4 h-4" />
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>Editar</span>
                         </button>
                         <button
                           onClick={() => setDeleteConfirmTournament(activeTournament)}
-                          className="p-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl border border-stone-200 transition-colors"
+                          className="flex items-center gap-1 px-3 py-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl border border-rose-200 text-xs font-semibold transition-colors"
                           title="Excluir torneio"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Excluir</span>
                         </button>
                       </>
                     )}
