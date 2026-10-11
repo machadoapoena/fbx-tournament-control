@@ -1450,9 +1450,21 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                                   <circle
                                     cx={x}
                                     cy={getY(item.standard)}
-                                    r={8}
+                                    r={10}
                                     fill="transparent"
                                     className="cursor-pointer"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const diff = prevItem?.standard ? item.standard! - prevItem.standard : null;
+                                      setHoveredPoint(prev => (prev?.period === item.period && prev?.modality === 'standard') ? null : {
+                                        period: item.period,
+                                        modality: 'standard',
+                                        rating: item.standard!,
+                                        diff,
+                                        x,
+                                        y: getY(item.standard!),
+                                      });
+                                    }}
                                     onMouseEnter={() => {
                                       const diff = prevItem?.standard ? item.standard! - prevItem.standard : null;
                                       setHoveredPoint({
@@ -1470,7 +1482,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                                     <circle
                                       cx={x}
                                       cy={getY(item.standard)}
-                                      r={isStdHovered ? 6 : 4}
+                                      r={isStdHovered ? 5 : 3.5}
                                       className="fill-white stroke-emerald-600 stroke-2 pointer-events-none transition-all"
                                     />
                                   )}
@@ -1484,9 +1496,21 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                                   <circle
                                     cx={x}
                                     cy={getY(item.rapid)}
-                                    r={8}
+                                    r={10}
                                     fill="transparent"
                                     className="cursor-pointer"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const diff = prevItem?.rapid ? item.rapid! - prevItem.rapid : null;
+                                      setHoveredPoint(prev => (prev?.period === item.period && prev?.modality === 'rapid') ? null : {
+                                        period: item.period,
+                                        modality: 'rapid',
+                                        rating: item.rapid!,
+                                        diff,
+                                        x,
+                                        y: getY(item.rapid!),
+                                      });
+                                    }}
                                     onMouseEnter={() => {
                                       const diff = prevItem?.rapid ? item.rapid! - prevItem.rapid : null;
                                       setHoveredPoint({
@@ -1504,7 +1528,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                                     <circle
                                       cx={x}
                                       cy={getY(item.rapid)}
-                                      r={isRapHovered ? 6 : 4}
+                                      r={isRapHovered ? 5 : 3.5}
                                       className="fill-white stroke-sky-600 stroke-2 pointer-events-none transition-all"
                                     />
                                   )}
@@ -1518,9 +1542,21 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                                   <circle
                                     cx={x}
                                     cy={getY(item.blitz)}
-                                    r={8}
+                                    r={10}
                                     fill="transparent"
                                     className="cursor-pointer"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const diff = prevItem?.blitz ? item.blitz! - prevItem.blitz : null;
+                                      setHoveredPoint(prev => (prev?.period === item.period && prev?.modality === 'blitz') ? null : {
+                                        period: item.period,
+                                        modality: 'blitz',
+                                        rating: item.blitz!,
+                                        diff,
+                                        x,
+                                        y: getY(item.blitz!),
+                                      });
+                                    }}
                                     onMouseEnter={() => {
                                       const diff = prevItem?.blitz ? item.blitz! - prevItem.blitz : null;
                                       setHoveredPoint({
@@ -1538,7 +1574,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                                     <circle
                                       cx={x}
                                       cy={getY(item.blitz)}
-                                      r={isBlzHovered ? 6 : 4}
+                                      r={isBlzHovered ? 5 : 3.5}
                                       className="fill-white stroke-amber-500 stroke-2 pointer-events-none transition-all"
                                     />
                                   )}
@@ -1561,32 +1597,31 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                       })}
                     </svg>
 
-                    {/* Floating Tooltip */}
+                    {/* Floating Compact Tooltip */}
                     {hoveredPoint && (
                       <div
-                        className="absolute pointer-events-none bg-stone-900 text-white px-3 py-2 rounded-xl text-xs shadow-xl border border-stone-700 font-mono z-30 transition-all -translate-x-1/2 -translate-y-full mb-3"
+                        className="absolute pointer-events-none bg-stone-900/95 backdrop-blur-xs text-white px-2 py-1 rounded-lg text-xs shadow-lg border border-stone-700/80 font-mono z-30 transition-all -translate-x-1/2 -translate-y-full mb-1.5 whitespace-nowrap"
                         style={{
                           left: `${(hoveredPoint.x / chartWidth) * 100}%`,
                           top: `${(hoveredPoint.y / chartHeight) * 100}%`,
                         }}
                       >
-                        <div className="flex items-center justify-between gap-3 text-[11px] text-stone-300 font-sans">
-                          <span>{hoveredPoint.period}</span>
-                          <span className="font-bold uppercase tracking-wider text-amber-300">
-                            {hoveredPoint.modality === 'standard' ? 'Clássico' : hoveredPoint.modality === 'rapid' ? 'Rápido' : 'Blitz'}
-                          </span>
-                        </div>
-                        <div className="text-base font-extrabold text-white mt-0.5 flex items-center gap-2">
-                          <span>{hoveredPoint.rating}</span>
+                        <div className="flex items-center gap-1.5 text-[11px] leading-tight">
+                          <span className="text-stone-300 font-sans text-[10px]">{hoveredPoint.period}</span>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            hoveredPoint.modality === 'standard' ? 'bg-emerald-400' :
+                            hoveredPoint.modality === 'rapid' ? 'bg-sky-400' : 'bg-amber-400'
+                          }`} />
+                          <span className="font-extrabold text-white">{hoveredPoint.rating}</span>
                           {hoveredPoint.diff !== null && (
-                            <span className={`text-xs font-bold ${
+                            <span className={`text-[10px] font-bold ${
                               hoveredPoint.diff > 0 
                                 ? 'text-emerald-400' 
                                 : hoveredPoint.diff < 0 
                                 ? 'text-rose-400' 
                                 : 'text-stone-400'
                             }`}>
-                              ({hoveredPoint.diff > 0 ? '+' : ''}{hoveredPoint.diff})
+                              {hoveredPoint.diff > 0 ? `+${hoveredPoint.diff}` : hoveredPoint.diff === 0 ? '(=)' : hoveredPoint.diff}
                             </span>
                           )}
                         </div>
