@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Player, Tournament, HallOfFamePlayer, PlayerPodiumPlacement } from '../types/chess';
-import { calculateAge } from '../lib/exportUtils';
+import { calculateAge, exportSpotlightRankingToPDF } from '../lib/exportUtils';
 import { findMatchingPlayer, normalizeName } from '../lib/playerMatching';
 import { AgeGroupPlayersModal } from './AgeGroupPlayersModal';
 import { HallOfFameModal } from './HallOfFameModal';
@@ -17,7 +17,8 @@ import {
   Eye,
   Trophy,
   Medal,
-  Star
+  Star,
+  Download
 } from 'lucide-react';
 
 interface StatsOverviewProps {
@@ -169,7 +170,8 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
     return hallOfFamePlayers.slice(0, 3);
   }, [hallOfFamePlayers]);
 
-  const spotlightPlayers = useMemo(() => {
+  // All players matching the active spotlight filters (System, Modality, Category, Rating > 0), sorted by rating desc
+  const allSpotlightMatchingPlayers = useMemo(() => {
     return [...players]
       .filter((p) => {
         const rating = getPlayerRating(p, spotlightSystem, spotlightModality);
@@ -191,9 +193,16 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
         }
         return true;
       })
-      .sort((a, b) => getPlayerRating(b, spotlightSystem, spotlightModality) - getPlayerRating(a, spotlightSystem, spotlightModality))
-      .slice(0, 5);
+      .sort((a, b) => {
+        const diff = getPlayerRating(b, spotlightSystem, spotlightModality) - getPlayerRating(a, spotlightSystem, spotlightModality);
+        if (diff !== 0) return diff;
+        return (a.name || '').localeCompare(b.name || '');
+      });
   }, [players, spotlightCategory, spotlightSystem, spotlightModality]);
+
+  const spotlightPlayers = useMemo(() => {
+    return allSpotlightMatchingPlayers.slice(0, 5);
+  }, [allSpotlightMatchingPlayers]);
 
   const hasAnySpotlightPlayers = useMemo(() => {
     return players.some((p) => 
@@ -641,6 +650,30 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                   );
                 })}
               </div>
+
+              {/* Botão Exportar PDF com todos os enxadristas do filtro */}
+              <button
+                type="button"
+                onClick={() =>
+                  exportSpotlightRankingToPDF({
+                    system: spotlightSystem,
+                    modality: spotlightModality,
+                    category: spotlightCategory,
+                    players,
+                  })
+                }
+                disabled={allSpotlightMatchingPlayers.length === 0}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-stone-900 hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-all shadow-2xs cursor-pointer inline-flex items-center gap-1.5"
+                title={`Exportar lista completa em PDF (${allSpotlightMatchingPlayers.length} jogadores)`}
+              >
+                <Download className="w-3.5 h-3.5 text-stone-300" />
+                <span>Exportar PDF</span>
+                {allSpotlightMatchingPlayers.length > 0 && (
+                  <span className="px-1.5 py-0.2 bg-stone-800 text-[10px] font-mono rounded text-stone-300 border border-stone-700/50">
+                    {allSpotlightMatchingPlayers.length}
+                  </span>
+                )}
+              </button>
 
               <button
                 onClick={onNavigateToPlayers}

@@ -719,3 +719,174 @@ export function exportTournamentStandingsToPDF(tournament: Tournament, players: 
   doc.save(`jogadores_${tournament.name.toLowerCase().replace(/\s+/g, '_')}.pdf`);
 }
 
+// PDF Export for Spotlight / Rating Rankings
+export interface ExportSpotlightRankingParams {
+  system: 'fide' | 'cbx';
+  modality: 'standard' | 'rapid' | 'blitz';
+  category: 'TODOS' | 'SUB10' | 'SUB14' | 'SUB20';
+  players: Player[];
+}
+
+export function exportSpotlightRankingToPDF({
+  system,
+  modality,
+  category,
+  players
+}: ExportSpotlightRankingParams) {
+  const getRating = (p: Player) => {
+    if (system === 'fide') {
+      if (modality === 'standard') return p.ratingFideStandard ?? p.ratingFide ?? 0;
+      if (modality === 'rapid') return p.ratingFideRapid ?? 0;
+      if (modality === 'blitz') return p.ratingFideBlitz ?? 0;
+    } else {
+      if (modality === 'standard') return p.ratingCbxStandard ?? p.ratingCbx ?? 0;
+      if (modality === 'rapid') return p.ratingCbxRapid ?? 0;
+      if (modality === 'blitz') return p.ratingCbxBlitz ?? 0;
+    }
+    return 0;
+  };
+
+  // Filter and sort by rating descending, then by name
+  const filtered = [...players]
+    .filter((p) => {
+      const r = getRating(p);
+      if (r <= 0) return false;
+
+      if (category === 'TODOS') return true;
+      if (!p.birthDate) return false;
+      const age = calculateAge(p.birthDate);
+      if (category === 'SUB10') return age <= 10;
+      if (category === 'SUB14') return age <= 14;
+      if (category === 'SUB20') return age <= 20;
+      return true;
+    })
+    .sort((a, b) => {
+      const diff = getRating(b) - getRating(a);
+      if (diff !== 0) return diff;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'pt',
+    format: 'a4'
+  });
+
+  const pageWidth = 595;
+  const marginX = 36;
+  const headerHeight = 72;
+
+  // White header background
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, pageWidth, headerHeight, 'F');
+
+  // Subtle border line under header
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(1);
+  doc.line(0, headerHeight, pageWidth, headerHeight);
+
+  // FBX Logo on top left if available
+  let textStartX = marginX;
+  try {
+    if (FBX_LOGO_BASE64) {
+      doc.addImage(FBX_LOGO_BASE64, 'PNG', marginX, 12, 48, 48);
+      textStartX = marginX + 58;
+    }
+  } catch (err) {
+    console.warn('Não foi possível carregar a logo da FBX no PDF:', err);
+  }
+
+  const systemLabel = system === 'fide' ? 'FIDE' : 'CBX';
+  const modalityLabel = modality === 'standard' ? 'Standard' : modality === 'rapid' ? 'Rápido' : 'Blitz';
+  const modalitySub = modality === 'standard' ? 'Pensado' : modality === 'rapid' ? 'Rápido' : 'Relâmpago';
+  const categoryLabel = 
+    category === 'TODOS' ? 'Geral' :
+    category === 'SUB10' ? 'Sub-10' :
+    category === 'SUB14' ? 'Sub-14' :
+    'Sub-20';
+
+  // Title
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Ranking de Rating ${systemLabel} • ${modalityLabel} (${modalitySub})`, textStartX, 28);
+
+  // Subtitles
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Categoria: ${categoryLabel}  |  Sistema: ${systemLabel} (${system === 'fide' ? 'Internacional' : 'Nacional'})`, textStartX, 44);
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('pt-BR');
+  const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  doc.text(`Total de enxadristas: ${filtered.length}  |  Gerado em: ${dateStr} às ${timeStr}`, textStartX, 58);
+
+  const tableHead = [
+    ['Pos', 'Título', 'Nome', 'Idade', `Rating ${systemLabel}`, 'ID FIDE', 'ID CBX']
+  ];
+
+  const tableBody = filtered.map((p, idx) => {
+    let titleStr: string = p.title || '';
+    if (titleStr.toLowerCase().trim() === 'sem título' || titleStr.toLowerCase().trim() === 'sem titulo') {
+      titleStr = '';
+    }
+
+    const age = p.birthDate ? calculateAge(p.birthDate) : null;
+    const ageStr = age !== null && age > 0 ? `${age}` : '-';
+    const ratingVal = getRating(p);
+
+    return [
+      idx + 1,
+      titleStr || '-',
+      p.name || '-',
+      ageStr,
+      ratingVal > 0 ? String(ratingVal) : '-',
+      p.fideId || '-',
+      p.cbxId || '-'
+    ];
+  });
+
+  autoTable(doc, {
+    head: tableHead,
+    body: tableBody,
+    startY: 85,
+    margin: { left: marginX, right: marginX },
+    theme: 'plain',
+    headStyles: {
+      fillColor: [248, 250, 252],
+      textColor: [15, 23, 42],
+      fontSize: 8,
+      fontStyle: 'bold',
+      halign: 'center',
+      lineColor: [203, 213, 225],
+      lineWidth: { bottom: 1.5, top: 0, left: 0, right: 0 }
+    },
+    styles: {
+      fontSize: 8,
+      textColor: [30, 41, 59],
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252]
+    },
+    columnStyles: {
+      0: { cellWidth: 32, halign: 'center', fontStyle: 'bold' },  // Pos
+      1: { cellWidth: 44, halign: 'center', fontStyle: 'bold' },  // Título
+      2: { cellWidth: 195 },                                      // Nome
+      3: { cellWidth: 44, halign: 'center' },                     // Idade
+      4: { cellWidth: 76, halign: 'center', fontStyle: 'bold' },  // Rating
+      5: { cellWidth: 66, halign: 'center' },                     // ID FIDE
+      6: { cellWidth: 66, halign: 'center' },                     // ID CBX
+    },
+    didDrawPage: () => {
+      const pageStr = `Página ${doc.getNumberOfPages()}  |  Federação Brasiliense de Xadrez (FBX)`;
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(pageStr, marginX, 825);
+    }
+  });
+
+  const catSlug = category.toLowerCase();
+  doc.save(`ranking_${system}_${modality}_${catSlug}.pdf`);
+}
+
