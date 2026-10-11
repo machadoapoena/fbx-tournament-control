@@ -164,18 +164,21 @@ export const TitledPlayersModal: React.FC<TitledPlayersModalProps> = ({
       );
     }
 
-    // Sort: by title priority first, then standard rating desc, then name
+    // Sort: by FIDE rating desc, then CBX rating desc, then title rank, then name
     return [...list].sort((a, b) => {
+      const fideA = a.ratingFideStandard ?? a.ratingFide ?? 0;
+      const fideB = b.ratingFideStandard ?? b.ratingFide ?? 0;
+      if (fideB !== fideA) return fideB - fideA;
+
+      const cbxA = a.ratingCbxStandard ?? a.ratingCbx ?? 0;
+      const cbxB = b.ratingCbxStandard ?? b.ratingCbx ?? 0;
+      if (cbxB !== cbxA) return cbxB - cbxA;
+
       const idxA = TITLE_ORDER.indexOf(a.title as ChessTitle);
       const idxB = TITLE_ORDER.indexOf(b.title as ChessTitle);
       const rankA = idxA === -1 ? 999 : idxA;
       const rankB = idxB === -1 ? 999 : idxB;
-
       if (rankA !== rankB) return rankA - rankB;
-
-      const ratingA = a.ratingFideStandard ?? a.ratingFide ?? a.ratingCbxStandard ?? a.ratingCbx ?? 0;
-      const ratingB = b.ratingFideStandard ?? b.ratingFide ?? b.ratingCbxStandard ?? b.ratingCbx ?? 0;
-      if (ratingB !== ratingA) return ratingB - ratingA;
 
       return a.name.localeCompare(b.name);
     });
@@ -195,12 +198,16 @@ export const TitledPlayersModal: React.FC<TitledPlayersModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150"
+      onClick={onClose}
+    >
       <div 
         className="relative w-full max-w-5xl bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-150"
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-titled-players-title"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="px-6 py-4 bg-stone-900 text-white flex items-center justify-between border-b border-stone-800">
