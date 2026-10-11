@@ -428,10 +428,6 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
               Consultar Todos os Jogadores
               <ArrowUpRight className="w-4 h-4" />
             </button>
-            <div className="text-xs text-stone-400 flex items-center gap-1.5 px-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              Base de Dados Firebase Sincronizada
-            </div>
           </div>
         </div>
       </div>
@@ -857,7 +853,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                       {isTop1 ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400 text-stone-950 font-black text-xs shadow-2xs border border-amber-500 font-mono">
                           <span>🥇</span>
-                          <span>1º Luga</span>
+                          <span>1º Lugar</span>
                         </span>
                       ) : isTop2 ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-200 text-slate-900 font-black text-xs shadow-2xs border border-slate-300 font-mono">
