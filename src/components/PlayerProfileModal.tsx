@@ -213,7 +213,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   // Statistics calculation for the active dataset
   const stats = useMemo(() => {
     if (!activeHistory || activeHistory.length === 0) {
-      return { peak: null, lowest: null, current: null, netGain: null, count: 0 };
+      return { peak: null, lowest: null, current: null, previous: null, lastDelta: null, currentPeriod: '', previousPeriod: '', netGain: null, count: 0 };
     }
 
     const ratings: number[] = [];
@@ -230,14 +230,16 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
     });
 
     if (ratings.length === 0) {
-      return { peak: null, lowest: null, current: null, netGain: null, count: 0 };
+      return { peak: null, lowest: null, current: null, previous: null, lastDelta: null, currentPeriod: '', previousPeriod: '', netGain: null, count: 0 };
     }
 
     const peak = Math.max(...ratings);
     const lowest = Math.min(...ratings);
 
-    // Find latest non-null rating (current) and earliest non-null rating (start)
+    // Find latest non-null rating (current) and previous non-null rating (previous)
     let current = 0;
+    let currentIdx = -1;
+    let currentPeriod = '';
     for (let i = activeHistory.length - 1; i >= 0; i--) {
       const it = activeHistory[i];
       const val = selectedModality === 'standard' ? it.standard
@@ -246,7 +248,42 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 : (it.standard || it.rapid || it.blitz);
       if (val && val > 0) {
         current = val;
+        currentIdx = i;
+        currentPeriod = it.period;
         break;
+      }
+    }
+
+    let previous: number | null = null;
+    let previousPeriod = '';
+    let immediatePrevious: number | null = null;
+    let immediatePreviousPeriod = '';
+
+    if (currentIdx > 0) {
+      for (let i = currentIdx - 1; i >= 0; i--) {
+        const it = activeHistory[i];
+        const val = selectedModality === 'standard' ? it.standard
+                  : selectedModality === 'rapid' ? it.rapid
+                  : selectedModality === 'blitz' ? it.blitz
+                  : (it.standard || it.rapid || it.blitz);
+        if (val && val > 0) {
+          if (immediatePrevious === null) {
+            immediatePrevious = val;
+            immediatePreviousPeriod = it.period;
+          }
+          // If anterior is equal to current, look for previous different rating
+          if (val !== current) {
+            previous = val;
+            previousPeriod = it.period;
+            break;
+          }
+        }
+      }
+
+      // If all previous ratings had the exact same value, fall back to the immediate previous
+      if (previous === null && immediatePrevious !== null) {
+        previous = immediatePrevious;
+        previousPeriod = immediatePreviousPeriod;
       }
     }
 
@@ -264,8 +301,19 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
     }
 
     const netGain = current - start;
+    const lastDelta = previous !== null ? current - previous : null;
 
-    return { peak, lowest, current, netGain, count: activeHistory.length };
+    return { 
+      peak, 
+      lowest, 
+      current, 
+      previous, 
+      lastDelta, 
+      currentPeriod,
+      previousPeriod,
+      netGain, 
+      count: activeHistory.length 
+    };
   }, [activeHistory, selectedModality]);
 
   // Fetch online history from backend API and/or fast client proxies
@@ -1138,13 +1186,13 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 </button>
 
                 {stats.peak !== null && (
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1" title={`Maior rating alcançado: ${stats.peak}`}>
                     <span className="text-[11px] text-stone-500">Pico:</span>
                     <span className="font-extrabold text-stone-900">{stats.peak}</span>
                   </div>
                 )}
                 {stats.netGain !== null && (
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1" title="Variação total acumulada desde o primeiro registro no gráfico">
                     <span className="text-[11px] text-stone-500">Progresso:</span>
                     <span className={`font-extrabold flex items-center gap-0.5 ${
                       stats.netGain > 0 
@@ -1157,6 +1205,34 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                       {stats.netGain > 0 ? (
                         <TrendingUp className="w-3 h-3" />
                       ) : stats.netGain < 0 ? (
+                        <TrendingDown className="w-3 h-3" />
+                      ) : (
+                        <Minus className="w-3 h-3" />
+                      )}
+                    </span>
+                  </div>
+                )}
+                {stats.lastDelta !== null && (
+                  <div 
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-stone-100/90 border border-stone-200/80" 
+                    title={
+                      stats.lastDelta === 0
+                        ? `Rating inalterado (${stats.current})`
+                        : `Variação do último registro (${stats.currentPeriod}: ${stats.current}) em relação ao anterior diferente (${stats.previousPeriod}: ${stats.previous})`
+                    }
+                  >
+                    <span className="text-[11px] text-stone-500">Última Variação:</span>
+                    <span className={`font-extrabold flex items-center gap-0.5 ${
+                      stats.lastDelta > 0 
+                        ? 'text-emerald-600' 
+                        : stats.lastDelta < 0 
+                        ? 'text-rose-600' 
+                        : 'text-stone-600'
+                    }`}>
+                      {stats.lastDelta > 0 ? `+${stats.lastDelta}` : stats.lastDelta === 0 ? '0' : stats.lastDelta}
+                      {stats.lastDelta > 0 ? (
+                        <TrendingUp className="w-3 h-3" />
+                      ) : stats.lastDelta < 0 ? (
                         <TrendingDown className="w-3 h-3" />
                       ) : (
                         <Minus className="w-3 h-3" />
