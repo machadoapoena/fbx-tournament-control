@@ -857,17 +857,17 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                       {isTop1 ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400 text-stone-950 font-black text-xs shadow-2xs border border-amber-500 font-mono">
                           <span>🥇</span>
-                          <span>1º Lugar • Ouro</span>
+                          <span>1º Luga</span>
                         </span>
                       ) : isTop2 ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-200 text-slate-900 font-black text-xs shadow-2xs border border-slate-300 font-mono">
                           <span>🥈</span>
-                          <span>2º Lugar • Prata</span>
+                          <span>2º Lugar</span>
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-700 text-amber-50 font-black text-xs shadow-2xs border border-amber-800 font-mono">
                           <span>🥉</span>
-                          <span>3º Lugar • Bronze</span>
+                          <span>3º Lugar</span>
                         </span>
                       )}
 
@@ -978,17 +978,17 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                         {isGold ? (
                           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400 text-stone-950 font-black text-xs shadow-xs border border-amber-500">
                             <span className="text-sm">🥇</span>
-                            <span>1º Lugar • Ouro</span>
+                            <span>1º Lugar</span>
                           </div>
                         ) : isSilver ? (
                           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-300 text-slate-950 font-black text-xs shadow-xs border border-slate-400">
                             <span className="text-sm">🥈</span>
-                            <span>2º Lugar • Prata</span>
+                            <span>2º Lugar</span>
                           </div>
                         ) : isBronze ? (
                           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-700 text-amber-50 font-black text-xs shadow-xs border border-amber-800">
                             <span className="text-sm">🥉</span>
-                            <span>3º Lugar • Bronze</span>
+                            <span>3º Lugar</span>
                           </div>
                         ) : isFourth ? (
                           <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-900 text-indigo-100 font-bold text-xs shadow-xs border border-indigo-950">
