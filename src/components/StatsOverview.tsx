@@ -18,7 +18,8 @@ import {
   Trophy,
   Medal,
   Star,
-  Download
+  Download,
+  FileText
 } from 'lucide-react';
 
 interface StatsOverviewProps {
@@ -651,7 +652,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                 })}
               </div>
 
-              {/* Botão Exportar PDF com todos os enxadristas do filtro */}
+              {/* Botão Exportar PDF com todos os enxadristas do filtro (estilo idêntico ao da tela de torneios) */}
               <button
                 type="button"
                 onClick={() =>
@@ -663,16 +664,11 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                   })
                 }
                 disabled={allSpotlightMatchingPlayers.length === 0}
-                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-stone-900 hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-all shadow-2xs cursor-pointer inline-flex items-center gap-1.5"
-                title={`Exportar lista completa em PDF (${allSpotlightMatchingPlayers.length} jogadores)`}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title={`Baixar lista de jogadores em PDF (${allSpotlightMatchingPlayers.length} jogadores)`}
               >
-                <Download className="w-3.5 h-3.5 text-stone-300" />
-                <span>Exportar PDF</span>
-                {allSpotlightMatchingPlayers.length > 0 && (
-                  <span className="px-1.5 py-0.2 bg-stone-800 text-[10px] font-mono rounded text-stone-300 border border-stone-700/50">
-                    {allSpotlightMatchingPlayers.length}
-                  </span>
-                )}
+                <FileText className="w-3.5 h-3.5 text-rose-600" />
+                <span>PDF</span>
               </button>
 
               <button
