@@ -838,30 +838,10 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                           </div>
 
                           <div className="text-right">
-                            {item.standing.wins !== undefined ? (
-                              <>
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
-                                  Vitórias
-                                </div>
-                                <div className="text-xs font-extrabold text-emerald-700 font-mono mt-0.5">
-                                  {item.standing.wins} vitórias
-                                </div>
-                              </>
-                            ) : item.standing.buchholz !== undefined ? (
-                              <>
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
-                                  Buchholz
-                                </div>
-                                <div className="text-xs font-extrabold text-stone-700 font-mono mt-0.5">
-                                  {item.standing.buchholz}
-                                </div>
-                              </>
-                            ) : (
-                              <div className="inline-flex items-center gap-1 text-[11px] font-bold text-stone-400">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                Finalizado
-                              </div>
-                            )}
+                            <div className="inline-flex items-center gap-1 text-[11px] font-bold text-stone-400">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              Finalizado
+                            </div>
                           </div>
                         </div>
                       </div>
