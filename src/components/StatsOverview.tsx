@@ -745,9 +745,15 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                               target="_blank"
                               rel="noopener noreferrer"
                               title={`Abrir perfil CBX oficial de ${player.name} (${player.cbxId || ''})`}
-                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-black bg-blue-100 text-blue-800 border border-blue-200 hover:scale-105 transition-transform cursor-pointer"
+                              className="inline-flex items-center hover:scale-110 transition-transform cursor-pointer"
                             >
-                              CBX {player.cbxId || ''}
+                              <img
+                                src="https://cbx.org.br/files/textos/003659/000965.jpg"
+                                alt="CBX"
+                                width="20"
+                                height="20"
+                                className="inline-block"
+                              />
                             </a>
                           )}
                         </div>
