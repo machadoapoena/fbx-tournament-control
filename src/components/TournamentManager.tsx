@@ -808,20 +808,15 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                         );
                       })()}
                       {isTournamentFideRated(activeTournament) && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200" title="Válido para Rating FIDE">
-                          <img src="https://www.fide.com/img/logo1.png" width="12" height="12" alt="FIDE" className="shrink-0" />
-                          <span>FIDE</span>
+                        <span>
+                          <img src="https://www.fide.com/img/logo1.png" width="25" alt="FIDE" className="shrink-0" />
                         </span>
                       )}
                       {isTournamentCbxRated(activeTournament) && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200" title="Válido para Rating CBX">
-                          <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="12" height="12" alt="CBX" className="shrink-0 rounded-xs" />
-                          <span>CBX</span>
+                        <span>
+                          <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="25"  alt="CBX" className="shrink-0 rounded-xs" />
                         </span>
                       )}
-                      <span className="text-xs text-stone-700">
-                        {activeTournament.city} - {activeTournament.state}
-                      </span>
                     </div>
                     <h2 className="text-xl font-extrabold text-stone-900 font-sans">
                       {activeTournament.name}
@@ -860,7 +855,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                       title="Exportar jogadores do torneio para planilha Excel (.xlsx) do Swiss-Manager"
                     >
                       <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Swiss-Manager (Excel)</span>
+                      <span>Swiss-Manager (XLS)</span>
                     </button>
 
                     <button
@@ -881,7 +876,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                           title="Editar dados do torneio"
                         >
                           <Edit className="w-3.5 h-3.5" />
-                          <span>Editar</span>
                         </button>
                         <button
                           onClick={() => setDeleteConfirmTournament(activeTournament)}
@@ -889,7 +883,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                           title="Excluir torneio"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                          <span>Excluir</span>
                         </button>
                       </>
                     )}
@@ -898,6 +891,13 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
 
                 {/* Tournament Metadata Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-4 border-b border-stone-100 text-xs">
+                  <div>
+                    <span className="text-stone-700 block mb-0.5">Local</span>
+                    <span className="font-bold text-stone-900 font-mono">
+                      {activeTournament.city} - {activeTournament.state}
+                    </span>
+                  </div>
+
                   <div>
                     <span className="text-stone-700 block mb-0.5">Data de Início</span>
                     <span className="font-bold text-stone-900 font-mono">
@@ -916,13 +916,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                     <span className="text-stone-700 block mb-0.5">Ritmo de Jogo</span>
                     <span className="font-bold text-stone-900 truncate block">
                       {activeTournament.timeControl}
-                    </span>
-                  </div>
-
-                  <div>
-                    <span className="text-stone-700 block mb-0.5">Organização</span>
-                    <span className="font-bold text-stone-900 truncate block">
-                      {activeTournament.organizer || 'FBX'}
                     </span>
                   </div>
                 </div>
