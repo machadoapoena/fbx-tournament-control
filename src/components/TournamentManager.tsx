@@ -980,13 +980,13 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                         <thead>
                           <tr className="border-b border-stone-200 bg-stone-100 text-[11px] font-bold text-stone-600 uppercase">
                             <th className="py-2.5 px-3 w-12 text-center">Pos</th>
+                            <th className="py-2.5 px-2 text-center w-12"></th>
                             <th className="py-2.5 px-3">Jogador</th>
-                            <th className="py-2.5 px-2 text-center">Título</th>
                             {isTournamentFideRated(activeTournament) && (
                               <th className="py-2.5 px-3 text-center">
                                 <span className="inline-flex items-center gap-1 justify-center">
                                   <img src="https://www.fide.com/img/logo1.png" width="13" height="13" alt="FIDE" className="shrink-0" />
-                                  <span>Rating FIDE</span>
+                                  <span>Rtg. FIDE</span>
                                 </span>
                               </th>
                             )}
@@ -994,7 +994,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                               <th className="py-2.5 px-3 text-center">
                                 <span className="inline-flex items-center gap-1 justify-center">
                                   <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="13" height="13" alt="CBX" className="shrink-0 rounded-xs" />
-                                  <span>Rating CBX</span>
+                                  <span>Rtg. CBX</span>
                                 </span>
                               </th>
                             )}
@@ -1037,6 +1037,15 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                                   s.rank || idx + 1
                                 )}
                               </td>
+                              <td className="py-2.5 px-2 text-center">
+                                {s.title && s.title !== 'Sem Título' ? (
+                                  <span className="px-1.5 py-0.5 rounded bg-stone-900 text-white text-[10px] font-mono font-bold">
+                                    {s.title}
+                                  </span>
+                                ) : (
+                                  <span className="text-stone-300 font-mono">-</span>
+                                )}
+                              </td>
                               <td className="py-2.5 px-3">
                                 <button
                                   type="button"
@@ -1049,15 +1058,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                                   <span className="truncate">{s.playerName}</span>
                                   <TrendingUp className="w-3.5 h-3.5 text-stone-400 group-hover:text-emerald-600 transition-colors opacity-70 group-hover:opacity-100 shrink-0" />
                                 </button>
-                              </td>
-                              <td className="py-2.5 px-2 text-center">
-                                {s.title && s.title !== 'Sem Título' ? (
-                                  <span className="px-1.5 py-0.5 rounded bg-stone-900 text-white text-[10px] font-mono">
-                                    {s.title}
-                                  </span>
-                                ) : (
-                                  <span className="text-stone-600">-</span>
-                                )}
                               </td>
                               {hasFide && (
                                 <td className="py-2.5 px-3 text-center font-mono font-bold text-stone-800">
@@ -1101,11 +1101,10 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                                     href={matchedPlayer?.fideUrl || `https://ratings.fide.com/profile/${fideId}`}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="inline-flex items-center gap-1.5 hover:text-stone-950 font-bold hover:underline"
+                                    className="hover:text-stone-950 font-bold hover:underline"
                                     title={`Abrir perfil FIDE de ${s.playerName} (${fideId})`}
                                   >
-                                    <span>{fideId}</span>
-                                    <img src="https://www.fide.com/img/logo1.png" width="16" height="16" alt="FIDE" className="inline-block shrink-0" />
+                                    {fideId}
                                   </a>
                                 ) : (
                                   <span className="text-stone-400">-</span>
@@ -1117,11 +1116,10 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                                     href={matchedPlayer?.cbxUrl || `https://www.cbx.org.br/jogador/${cbxId}`}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="inline-flex items-center gap-1.5 hover:text-stone-950 font-bold hover:underline"
+                                    className="hover:text-stone-950 font-bold hover:underline"
                                     title={`Abrir perfil CBX de ${s.playerName} (${cbxId})`}
                                   >
-                                    <span>{cbxId}</span>
-                                    <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="16" height="16" alt="CBX" className="inline-block shrink-0 rounded-xs" />
+                                    {cbxId}
                                   </a>
                                 ) : (
                                   <span className="text-stone-400">-</span>
