@@ -367,12 +367,12 @@ export const TitledPlayersModal: React.FC<TitledPlayersModalProps> = ({
                 <thead>
                   <tr className="border-b border-stone-200 bg-stone-100/80 text-[11px] font-bold text-stone-600 uppercase tracking-wider sticky top-0 z-10 backdrop-blur-xs">
                     <th className="py-3 px-4">Titulação & Jogador</th>
-                    <th className="py-3 px-3 text-center">Rating FIDE Std</th>
-                    <th className="py-3 px-3 text-center">Rating CBX Std</th>
+                    <th className="py-3 px-3 text-center">Rtg. FIDE Std</th>
+                    <th className="py-3 px-3 text-center">Rtg. CBX Std</th>
                     <th className="py-3 px-3">ID FIDE</th>
                     <th className="py-3 px-3">ID CBX</th>
-                    <th className="py-3 px-3 text-center">Links Oficiais</th>
-                    <th className="py-3 px-4 text-center">Ações</th>
+                    <th className="py-3 px-3 text-center">Sites</th>
+                    <th className="py-3 px-4 text-center"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
@@ -481,9 +481,15 @@ export const TitledPlayersModal: React.FC<TitledPlayersModalProps> = ({
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title={`Abrir perfil oficial CBX de ${player.title} ${player.name} (${player.cbxId || ''})`}
-                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-blue-100 text-blue-800 border border-blue-200 hover:scale-105 transition-transform cursor-pointer"
+                                className="hover:scale-110 transition-transform cursor-pointer"
                               >
-                                CBX
+                                <img 
+                                  src="https://cbx.org.br/files/textos/003659/000965.jpg" 
+                                  alt="CBX" 
+                                  width="20" 
+                                  height="20" 
+                                  className="inline-block"
+                                />
                               </a>
                             ) : null}
 
@@ -503,7 +509,6 @@ export const TitledPlayersModal: React.FC<TitledPlayersModalProps> = ({
                               title={`Ver perfil completo e histórico de rating de ${player.title} ${player.name}`}
                             >
                               <Eye className="w-3.5 h-3.5" />
-                              <span>Perfil</span>
                             </button>
                           ) : (
                             <span className="text-stone-400 font-mono">-</span>

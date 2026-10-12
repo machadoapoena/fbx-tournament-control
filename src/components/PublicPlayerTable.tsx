@@ -631,15 +631,15 @@ export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
                       className="rounded border-stone-300 text-stone-900 focus:ring-stone-900 cursor-pointer"
                     />
                   </th>
-                  <th className="py-3 px-4">Jogador / Nome</th>
                   <th className="py-3 px-3 text-center">Título</th>
+                  <th className="py-3 px-4">Jogador / Nome</th>
                   <th className="py-3 px-3 text-center">Nasc.</th>
                   <th className="py-3 px-3 text-center">Sexo</th>
                   <th className="py-3 px-3 text-center">UF</th>
                   <th className="py-3 px-3">IDs</th>
                   <th className="py-3 px-3">FIDE</th>
                   <th className="py-3 px-3">CBX</th>
-                  <th className="py-3 px-3 text-center w-28">Evolução / Perfis</th>
+                  <th className="py-3 px-3 text-center w-28"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100 text-sm">
@@ -674,6 +674,17 @@ export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
                         />
                       </td>
 
+                      {/* Title */}
+                      <td className="py-3.5 px-3 text-center">
+                        {player.title && player.title !== 'Sem Título' ? (
+                          <span className="inline-block px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-stone-900 text-white shadow-2xs">
+                            {player.title}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-stone-400 font-mono">-</span>
+                        )}
+                      </td>
+
                       {/* Name - Clickable to open Profile & Rating Evolution Modal */}
                       <td className="py-3.5 px-4">
                         <button
@@ -687,31 +698,6 @@ export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
                           <span>{player.name}</span>
                           <TrendingUp className="w-3.5 h-3.5 text-stone-400 group-hover:text-emerald-600 transition-colors opacity-70 group-hover:opacity-100" />
                         </button>
-                      </td>
-
-                      {/* Title */}
-                      <td className="py-3.5 px-3 text-center">
-                        {player.title && player.title !== 'Sem Título' ? (
-                          <span
-                            className={`inline-block px-2 py-0.5 rounded text-[11px] font-mono font-extrabold ${
-                              player.title === 'GM'
-                                ? 'bg-stone-900 text-amber-300 shadow-xs'
-                                : player.title.startsWith('W')
-                                ? 'bg-purple-900 text-purple-200'
-                                : player.title === 'IM'
-                                ? 'bg-stone-800 text-white'
-                                : player.title.startsWith('A')
-                                ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
-                                : player.title === 'CMN' || player.title === 'MN'
-                                ? 'bg-blue-950 text-blue-300 border border-blue-800'
-                                : 'bg-stone-200 text-stone-800'
-                            }`}
-                          >
-                            {player.title}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-stone-400 font-mono">-</span>
-                        )}
                       </td>
 
                       {/* Age / Birth */}

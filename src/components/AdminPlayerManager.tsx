@@ -237,21 +237,7 @@ export const AdminPlayerManager: React.FC<AdminPlayerManagerProps> = ({
                       {/* Title */}
                       <td className="py-3.5 px-3 text-center">
                         {player.title && player.title !== 'Sem Título' ? (
-                          <span
-                            className={`inline-block px-2 py-0.5 rounded text-[11px] font-mono font-bold ${
-                              player.title === 'GM'
-                                ? 'bg-stone-900 text-amber-300'
-                                : player.title.startsWith('W')
-                                ? 'bg-purple-900 text-purple-200'
-                                : player.title === 'IM'
-                                ? 'bg-stone-800 text-white'
-                                : player.title.startsWith('A')
-                                ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
-                                : player.title === 'CMN' || player.title === 'MN'
-                                ? 'bg-blue-950 text-blue-300 border border-blue-800'
-                                : 'bg-stone-200 text-stone-800'
-                            }`}
-                          >
+                          <span className="inline-block px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-stone-900 text-white shadow-2xs">
                             {player.title}
                           </span>
                         ) : (
