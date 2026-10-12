@@ -642,25 +642,29 @@ export function exportTournamentStandingsToPDF(tournament: Tournament, players: 
       rawTitle = '';
     }
 
-    // FIDE rating for tournament modality
-    let fideRatingVal = 0;
-    if (modality === 'blitz') {
-      fideRatingVal = matched?.ratingFideBlitz || 0;
-    } else if (modality === 'rapid') {
-      fideRatingVal = matched?.ratingFideRapid || 0;
-    } else {
-      fideRatingVal = matched?.ratingFideStandard || matched?.ratingFide || 0;
+    // FIDE rating for tournament modality (prioritize tournament-specific standing rating)
+    let fideRatingVal = s.fideRating || 0;
+    if (!fideRatingVal) {
+      if (modality === 'blitz') {
+        fideRatingVal = matched?.ratingFideBlitz || 0;
+      } else if (modality === 'rapid') {
+        fideRatingVal = matched?.ratingFideRapid || 0;
+      } else {
+        fideRatingVal = matched?.ratingFideStandard || matched?.ratingFide || 0;
+      }
     }
     const fideRatingStr = fideRatingVal > 0 ? String(fideRatingVal) : '-';
 
-    // CBX rating for tournament modality
-    let cbxRatingVal = 0;
-    if (modality === 'blitz') {
-      cbxRatingVal = matched?.ratingCbxBlitz || 0;
-    } else if (modality === 'rapid') {
-      cbxRatingVal = matched?.ratingCbxRapid || 0;
-    } else {
-      cbxRatingVal = matched?.ratingCbxStandard || matched?.ratingCbx || 0;
+    // CBX rating for tournament modality (prioritize tournament-specific standing rating)
+    let cbxRatingVal = s.cbxRating || 0;
+    if (!cbxRatingVal) {
+      if (modality === 'blitz') {
+        cbxRatingVal = matched?.ratingCbxBlitz || 0;
+      } else if (modality === 'rapid') {
+        cbxRatingVal = matched?.ratingCbxRapid || 0;
+      } else {
+        cbxRatingVal = matched?.ratingCbxStandard || matched?.ratingCbx || 0;
+      }
     }
     const cbxRatingStr = cbxRatingVal > 0 ? String(cbxRatingVal) : '-';
 

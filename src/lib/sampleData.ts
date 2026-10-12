@@ -496,6 +496,8 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
     rounds: 6,
     timeControl: 'Pensado (90m + 30s de acréscimo)',
     type: 'standard',
+    ratedFide: true,
+    ratedCbx: true,
     status: 'Planejado',
     arbiters: 'AI Carlos Calleros, AN Roberto Viana',
     organizer: 'Federação Brasileira de Xadrez',
@@ -511,6 +513,8 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
     rounds: 6,
     timeControl: 'Pensado (90m + 30s)',
     type: 'standard',
+    ratedFide: true,
+    ratedCbx: true,
     status: 'Finalizado',
     arbiters: 'AI Marco Antonio Asbahr',
     organizer: 'Federação Paulista de Xadrez',
@@ -525,7 +529,9 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         rank: 1,
         buchholz: 22.0,
         sonnebornBerger: 20.5,
-        wins: 5
+        wins: 5,
+        fideRating: 1584,
+        cbxRating: 1610
       },
       {
         playerId: 'seed-youth-1',
@@ -537,7 +543,9 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         rank: 2,
         buchholz: 21.5,
         sonnebornBerger: 17.0,
-        wins: 5
+        wins: 5,
+        fideRating: 2315,
+        cbxRating: 2340
       },
       {
         playerId: 'seed-6',
@@ -549,7 +557,9 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         rank: 3,
         buchholz: 20.0,
         sonnebornBerger: 14.5,
-        wins: 4
+        wins: 4,
+        fideRating: 2380,
+        cbxRating: 2395
       },
       {
         playerId: 'seed-youth-2',
@@ -561,7 +571,9 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         rank: 4,
         buchholz: 19.0,
         sonnebornBerger: 12.0,
-        wins: 4
+        wins: 4,
+        fideRating: 2050,
+        cbxRating: 2080
       }
     ]
   },
@@ -574,6 +586,8 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
     rounds: 7,
     timeControl: 'Rápido (15m + 10s)',
     type: 'rapid',
+    ratedFide: true,
+    ratedCbx: true,
     status: 'Finalizado',
     arbiters: 'AN Roberto Viana',
     organizer: 'Clube de Xadrez de Santos',
@@ -589,7 +603,9 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         rank: 1,
         buchholz: 31.0,
         sonnebornBerger: 28.5,
-        wins: 6
+        wins: 6,
+        fideRating: 2230,
+        cbxRating: 2285
       },
       {
         playerId: 'seed-ana',
@@ -600,7 +616,9 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         rank: 2,
         buchholz: 29.5,
         sonnebornBerger: 24.0,
-        wins: 5
+        wins: 5,
+        fideRating: 1625,
+        cbxRating: 1640
       },
       {
         playerId: 'seed-alboredo',
@@ -612,7 +630,9 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         rank: 3,
         buchholz: 28.0,
         sonnebornBerger: 21.0,
-        wins: 5
+        wins: 5,
+        fideRating: 2190,
+        cbxRating: 2220
       },
       {
         playerId: 'seed-4',
@@ -624,7 +644,9 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         rank: 4,
         buchholz: 27.0,
         sonnebornBerger: 18.0,
-        wins: 4
+        wins: 4,
+        fideRating: 2165,
+        cbxRating: 2195
       }
     ]
   },
@@ -637,6 +659,8 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
     rounds: 9,
     timeControl: 'Rápido (15m + 10s)',
     type: 'rapid',
+    ratedFide: true,
+    ratedCbx: true,
     status: 'Finalizado',
     arbiters: 'AI Marco Antonio Asbahr',
     organizer: 'Federação Paranaense de Xadrez',
@@ -701,6 +725,8 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
     rounds: 7,
     timeControl: 'Rápido (15m + 10s)',
     type: 'rapid',
+    ratedFide: true,
+    ratedCbx: true,
     status: 'Finalizado',
     arbiters: 'AN Carlos Calleros',
     organizer: 'Federação Brasiliense de Xadrez',
@@ -777,6 +803,8 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
     rounds: 6,
     timeControl: 'Pensado (90m + 30s)',
     type: 'standard',
+    ratedFide: true,
+    ratedCbx: true,
     status: 'Finalizado',
     arbiters: 'AI Marco Antonio Asbahr',
     organizer: 'Federação Brasiliense de Xadrez',
@@ -792,7 +820,9 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         rank: 1,
         buchholz: 30.0,
         sonnebornBerger: 26.5,
-        wins: 5
+        wins: 5,
+        fideRating: 2580,
+        cbxRating: 2615
       },
       {
         playerId: 'seed-3',
@@ -804,7 +834,9 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         rank: 2,
         buchholz: 29.5,
         sonnebornBerger: 23.5,
-        wins: 4
+        wins: 4,
+        fideRating: 2280,
+        cbxRating: 2320
       },
       {
         playerId: 'seed-1',
@@ -816,7 +848,9 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         rank: 3,
         buchholz: 28.0,
         sonnebornBerger: 21.0,
-        wins: 4
+        wins: 4,
+        fideRating: 2595,
+        cbxRating: 2630
       },
       {
         playerId: 'seed-4',
@@ -828,7 +862,9 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         rank: 4,
         buchholz: 27.5,
         sonnebornBerger: 18.0,
-        wins: 3
+        wins: 3,
+        fideRating: 2210,
+        cbxRating: 2240
       },
       {
         playerId: 'seed-youth-1',
@@ -840,7 +876,9 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
         rank: 5,
         buchholz: 25.0,
         sonnebornBerger: 14.5,
-        wins: 3
+        wins: 3,
+        fideRating: 2315,
+        cbxRating: 2340
       }
     ]
   },
@@ -853,6 +891,8 @@ export const INITIAL_TOURNAMENTS: Omit<Tournament, 'id'>[] = [
     rounds: 9,
     timeControl: 'Blitz (3m + 2s)',
     type: 'blitz',
+    ratedFide: true,
+    ratedCbx: true,
     status: 'Finalizado',
     arbiters: 'AI Carlos Calleros',
     organizer: 'Confederação Brasileira de Xadrez',

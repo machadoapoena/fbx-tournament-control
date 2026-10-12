@@ -72,6 +72,8 @@ export interface TournamentStanding {
   buchholz?: number;
   sonnebornBerger?: number;
   wins?: number;
+  fideRating?: number;
+  cbxRating?: number;
 }
 
 export interface PlayerPodiumPlacement {
@@ -117,6 +119,8 @@ export interface Tournament {
   rounds: number;
   timeControl: string;
   type?: TournamentCategory;
+  ratedFide?: boolean;
+  ratedCbx?: boolean;
   status: 'Planejado' | 'Em Andamento' | 'Finalizado';
   arbiters?: string;
   organizer?: string;

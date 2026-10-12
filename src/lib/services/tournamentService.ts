@@ -15,6 +15,53 @@ import { INITIAL_TOURNAMENTS } from '../sampleData';
 
 const COLLECTION_NAME = 'tournaments';
 
+function cleanStandingForFirestore(s: TournamentStanding): Record<string, any> {
+  const item: Record<string, any> = {
+    playerId: s.playerId ? String(s.playerId).trim() : '',
+    playerName: s.playerName ? String(s.playerName).trim() : '',
+    points: typeof s.points === 'number' && !isNaN(s.points) ? Number(s.points) : 0,
+    rank: typeof s.rank === 'number' && !isNaN(s.rank) ? Number(s.rank) : 1,
+  };
+
+  if (s.title && String(s.title).trim()) item.title = String(s.title).trim();
+  if (s.fideId && String(s.fideId).trim()) item.fideId = String(s.fideId).trim();
+  if (s.cbxId && String(s.cbxId).trim()) item.cbxId = String(s.cbxId).trim();
+  if (s.buchholz !== undefined && s.buchholz !== null && !isNaN(Number(s.buchholz))) {
+    item.buchholz = Number(s.buchholz);
+  }
+  if (s.sonnebornBerger !== undefined && s.sonnebornBerger !== null && !isNaN(Number(s.sonnebornBerger))) {
+    item.sonnebornBerger = Number(s.sonnebornBerger);
+  }
+  if (s.wins !== undefined && s.wins !== null && !isNaN(Number(s.wins))) {
+    item.wins = Number(s.wins);
+  }
+  if (s.fideRating !== undefined && s.fideRating !== null && !isNaN(Number(s.fideRating)) && Number(s.fideRating) > 0) {
+    item.fideRating = Number(s.fideRating);
+  }
+  if (s.cbxRating !== undefined && s.cbxRating !== null && !isNaN(Number(s.cbxRating)) && Number(s.cbxRating) > 0) {
+    item.cbxRating = Number(s.cbxRating);
+  }
+
+  return item;
+}
+
+function cleanPayloadForFirestore(obj: any): any {
+  if (obj === undefined) return null;
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj
+      .filter((item) => item !== undefined)
+      .map((item) => cleanPayloadForFirestore(item));
+  }
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key] = cleanPayloadForFirestore(value);
+    }
+  }
+  return result;
+}
+
 export const tournamentService = {
   subscribeTournaments(
     onSuccess: (tournaments: Tournament[]) => void,
@@ -82,17 +129,19 @@ export const tournamentService = {
         rounds: Number(tournament.rounds) || 5,
         timeControl: tournament.timeControl || 'Pensado (90m+30s)',
         type: tournament.type || 'standard',
+        ratedFide: tournament.ratedFide !== false,
+        ratedCbx: tournament.ratedCbx !== false,
         status: tournament.status || 'Planejado',
         arbiters: tournament.arbiters?.trim() || '',
         organizer: tournament.organizer?.trim() || '',
         chessResultsUrl: tournament.chessResultsUrl?.trim() || '',
         participants: tournament.participants || [],
-        standings: tournament.standings || [],
+        standings: (tournament.standings || []).map(cleanStandingForFirestore),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
 
-      const docRef = await addDoc(collection(db, COLLECTION_NAME), cleanedData);
+      const docRef = await addDoc(collection(db, COLLECTION_NAME), cleanPayloadForFirestore(cleanedData));
       return docRef.id;
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, COLLECTION_NAME);
@@ -104,11 +153,15 @@ export const tournamentService = {
     const path = `${COLLECTION_NAME}/${id}`;
     try {
       const docRef = doc(db, COLLECTION_NAME, id);
-      const updatedData: Record<string, any> = {
+      const rawData: Record<string, any> = {
         ...tournament,
         updatedAt: new Date().toISOString(),
       };
-      delete updatedData.id;
+      delete rawData.id;
+      if (tournament.standings) {
+        rawData.standings = tournament.standings.map(cleanStandingForFirestore);
+      }
+      const updatedData = cleanPayloadForFirestore(rawData);
       await updateDoc(docRef, updatedData);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
@@ -120,8 +173,9 @@ export const tournamentService = {
     const path = `${COLLECTION_NAME}/${id}`;
     try {
       const docRef = doc(db, COLLECTION_NAME, id);
+      const cleanedStandings = (standings || []).map(cleanStandingForFirestore);
       await updateDoc(docRef, {
-        standings,
+        standings: cleanedStandings,
         updatedAt: new Date().toISOString(),
       });
     } catch (error) {

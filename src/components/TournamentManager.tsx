@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tournament, TournamentStanding, Player, SwissExportConfig } from '../types/chess';
+import { Tournament, TournamentStanding, Player, SwissExportConfig, TournamentCategory } from '../types/chess';
 import { 
   exportTournamentStandingsToPDF, 
   exportToSwissManagerExcel,
@@ -130,6 +130,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     rounds: 6,
     timeControl: 'Pensado (90m + 30s)',
     type: 'standard',
+    ratedFide: true,
+    ratedCbx: true,
     status: 'Planejado',
     arbiters: '',
     organizer: '',
@@ -137,6 +139,35 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     participants: [],
     standings: [],
   });
+
+  const [ratingLoadFeedback, setRatingLoadFeedback] = useState<string | null>(null);
+
+  // Helper functions to check rating affiliations
+  const isTournamentFideRated = (t?: Partial<Tournament> | null): boolean => {
+    if (!t) return false;
+    return t.ratedFide !== false;
+  };
+
+  const isTournamentCbxRated = (t?: Partial<Tournament> | null): boolean => {
+    if (!t) return false;
+    return t.ratedCbx !== false;
+  };
+
+  const getPlayerRatingForTournament = (
+    player: Player,
+    modality: TournamentCategory = 'standard',
+    type: 'fide' | 'cbx'
+  ): number | undefined => {
+    if (type === 'fide') {
+      if (modality === 'blitz') return player.ratingFideBlitz || undefined;
+      if (modality === 'rapid') return player.ratingFideRapid || undefined;
+      return player.ratingFideStandard || player.ratingFide || undefined;
+    } else {
+      if (modality === 'blitz') return player.ratingCbxBlitz || undefined;
+      if (modality === 'rapid') return player.ratingCbxRapid || undefined;
+      return player.ratingCbxStandard || player.ratingCbx || undefined;
+    }
+  };
 
   // Participant search & instant add state
   const [playerSearchTerm, setPlayerSearchTerm] = useState('');
@@ -169,6 +200,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       rounds: 6,
       timeControl: 'Pensado (90m + 30s)',
       type: 'standard',
+      ratedFide: true,
+      ratedCbx: true,
       status: 'Planejado',
       arbiters: '',
       organizer: '',
@@ -189,6 +222,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       rounds: t.rounds,
       timeControl: t.timeControl,
       type: t.type || 'standard',
+      ratedFide: t.ratedFide !== false,
+      ratedCbx: t.ratedCbx !== false,
       status: t.status,
       arbiters: t.arbiters || '',
       organizer: t.organizer || '',
@@ -235,6 +270,13 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
 
     setIsAddingPlayerId(player.id || pId);
     try {
+      const modality = activeTournament.type || 'standard';
+      const isFide = activeTournament.ratedFide !== false;
+      const isCbx = activeTournament.ratedCbx !== false;
+
+      const fideRtg = isFide ? getPlayerRatingForTournament(player, modality, 'fide') : undefined;
+      const cbxRtg = isCbx ? getPlayerRatingForTournament(player, modality, 'cbx') : undefined;
+
       const currentStandings = activeTournament.standings || [];
       const newStanding: TournamentStanding = {
         playerId: player.id || pId,
@@ -247,6 +289,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
         buchholz: 0,
         sonnebornBerger: 0,
         wins: 0,
+        fideRating: fideRtg && fideRtg > 0 ? fideRtg : undefined,
+        cbxRating: cbxRtg && cbxRtg > 0 ? cbxRtg : undefined,
       };
 
       const currentParticipants = activeTournament.participants || [];
@@ -301,7 +345,70 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     if (!selectedTournament) return;
     const current = selectedTournament.standings || [];
     setEditingStandings(JSON.parse(JSON.stringify(current)));
+    setRatingLoadFeedback(null);
     setIsScoreModalOpen(true);
+  };
+
+  const handleAutoLoadRatings = () => {
+    if (!selectedTournament) return;
+    const modality = selectedTournament.type || 'standard';
+    const isFide = isTournamentFideRated(selectedTournament);
+    const isCbx = isTournamentCbxRated(selectedTournament);
+
+    let updatedCount = 0;
+
+    const updatedStandings = editingStandings.map((st) => {
+      const matched = findMatchingPlayer(st, players);
+      if (!matched) return st;
+
+      let newFideRating = st.fideRating;
+      let newCbxRating = st.cbxRating;
+      let changed = false;
+
+      if (isFide && (!newFideRating || newFideRating === 0)) {
+        const r = getPlayerRatingForTournament(matched, modality, 'fide');
+        if (r && r > 0) {
+          newFideRating = r;
+          changed = true;
+        }
+      }
+
+      if (isCbx && (!newCbxRating || newCbxRating === 0)) {
+        const r = getPlayerRatingForTournament(matched, modality, 'cbx');
+        if (r && r > 0) {
+          newCbxRating = r;
+          changed = true;
+        }
+      }
+
+      if (changed) updatedCount++;
+
+      const item: TournamentStanding = {
+        playerId: st.playerId || '',
+        playerName: st.playerName || '',
+        points: typeof st.points === 'number' && !isNaN(st.points) ? Number(st.points) : 0,
+        rank: typeof st.rank === 'number' && !isNaN(st.rank) ? Number(st.rank) : 1,
+      };
+      if (st.title && String(st.title).trim()) item.title = String(st.title).trim();
+      if (st.fideId && String(st.fideId).trim()) item.fideId = String(st.fideId).trim();
+      if (st.cbxId && String(st.cbxId).trim()) item.cbxId = String(st.cbxId).trim();
+      if (st.buchholz !== undefined && st.buchholz !== null) item.buchholz = Number(st.buchholz);
+      if (st.sonnebornBerger !== undefined && st.sonnebornBerger !== null) item.sonnebornBerger = Number(st.sonnebornBerger);
+      if (st.wins !== undefined && st.wins !== null) item.wins = Number(st.wins);
+      if (newFideRating && Number(newFideRating) > 0) item.fideRating = Number(newFideRating);
+      if (newCbxRating && Number(newCbxRating) > 0) item.cbxRating = Number(newCbxRating);
+
+      return item;
+    });
+
+    setEditingStandings(updatedStandings);
+
+    if (updatedCount > 0) {
+      setRatingLoadFeedback(`${updatedCount} atleta(s) tiveram seus ratings carregados com sucesso.`);
+    } else {
+      setRatingLoadFeedback('Todos os atletas já possuem rating preenchido ou não possuem rating cadastrado nesta modalidade.');
+    }
+    setTimeout(() => setRatingLoadFeedback(null), 4000);
   };
 
   const handleSaveScores = async () => {
@@ -314,7 +421,35 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       return b.points - a.points;
     });
 
-    await onUpdateStandings(selectedTournament.id, sorted);
+    const sanitized: TournamentStanding[] = sorted.map((st) => {
+      const item: TournamentStanding = {
+        playerId: st.playerId || '',
+        playerName: st.playerName || '',
+        points: typeof st.points === 'number' && !isNaN(st.points) ? Number(st.points) : 0,
+        rank: typeof st.rank === 'number' && !isNaN(st.rank) ? Number(st.rank) : 1,
+      };
+      if (st.title && String(st.title).trim()) item.title = String(st.title).trim();
+      if (st.fideId && String(st.fideId).trim()) item.fideId = String(st.fideId).trim();
+      if (st.cbxId && String(st.cbxId).trim()) item.cbxId = String(st.cbxId).trim();
+      if (st.buchholz !== undefined && st.buchholz !== null && !isNaN(Number(st.buchholz))) {
+        item.buchholz = Number(st.buchholz);
+      }
+      if (st.sonnebornBerger !== undefined && st.sonnebornBerger !== null && !isNaN(Number(st.sonnebornBerger))) {
+        item.sonnebornBerger = Number(st.sonnebornBerger);
+      }
+      if (st.wins !== undefined && st.wins !== null && !isNaN(Number(st.wins))) {
+        item.wins = Number(st.wins);
+      }
+      if (st.fideRating !== undefined && st.fideRating !== null && !isNaN(Number(st.fideRating)) && Number(st.fideRating) > 0) {
+        item.fideRating = Number(st.fideRating);
+      }
+      if (st.cbxRating !== undefined && st.cbxRating !== null && !isNaN(Number(st.cbxRating)) && Number(st.cbxRating) > 0) {
+        item.cbxRating = Number(st.cbxRating);
+      }
+      return item;
+    });
+
+    await onUpdateStandings(selectedTournament.id, sanitized);
     setIsScoreModalOpen(false);
   };
 
@@ -600,6 +735,32 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                           <ModalityIcon className="w-2.5 h-2.5" />
                           {modality.label}
                         </span>
+                        {isTournamentFideRated(t) && (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                              isSelected
+                                ? 'bg-blue-950/70 text-blue-200 border-blue-800'
+                                : 'bg-blue-50 text-blue-800 border-blue-200'
+                            }`}
+                            title="Válido para Rating FIDE"
+                          >
+                            <img src="https://www.fide.com/img/logo1.png" width="10" height="10" alt="FIDE" className="shrink-0" />
+                            <span>FIDE</span>
+                          </span>
+                        )}
+                        {isTournamentCbxRated(t) && (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                              isSelected
+                                ? 'bg-emerald-950/70 text-emerald-200 border-emerald-800'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            }`}
+                            title="Válido para Rating CBX"
+                          >
+                            <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="10" height="10" alt="CBX" className="shrink-0 rounded-xs" />
+                            <span>CBX</span>
+                          </span>
+                        )}
                       </div>
                       <span className={`text-xs font-mono ${isSelected ? 'text-stone-300' : 'text-stone-700'}`}>
                         {t.startDate}
@@ -646,6 +807,18 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                           </span>
                         );
                       })()}
+                      {isTournamentFideRated(activeTournament) && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200" title="Válido para Rating FIDE">
+                          <img src="https://www.fide.com/img/logo1.png" width="12" height="12" alt="FIDE" className="shrink-0" />
+                          <span>FIDE</span>
+                        </span>
+                      )}
+                      {isTournamentCbxRated(activeTournament) && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200" title="Válido para Rating CBX">
+                          <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="12" height="12" alt="CBX" className="shrink-0 rounded-xs" />
+                          <span>CBX</span>
+                        </span>
+                      )}
                       <span className="text-xs text-stone-700">
                         {activeTournament.city} - {activeTournament.state}
                       </span>
@@ -809,6 +982,22 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                             <th className="py-2.5 px-3 w-12 text-center">Pos</th>
                             <th className="py-2.5 px-3">Jogador</th>
                             <th className="py-2.5 px-2 text-center">Título</th>
+                            {isTournamentFideRated(activeTournament) && (
+                              <th className="py-2.5 px-3 text-center">
+                                <span className="inline-flex items-center gap-1 justify-center">
+                                  <img src="https://www.fide.com/img/logo1.png" width="13" height="13" alt="FIDE" className="shrink-0" />
+                                  <span>Rating FIDE</span>
+                                </span>
+                              </th>
+                            )}
+                            {isTournamentCbxRated(activeTournament) && (
+                              <th className="py-2.5 px-3 text-center">
+                                <span className="inline-flex items-center gap-1 justify-center">
+                                  <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="13" height="13" alt="CBX" className="shrink-0 rounded-xs" />
+                                  <span>Rating CBX</span>
+                                </span>
+                              </th>
+                            )}
                             <th className="py-2.5 px-3">ID FIDE</th>
                             <th className="py-2.5 px-3">ID CBX</th>
                             <th className="py-2.5 px-3 text-right font-black">Pts</th>
@@ -821,6 +1010,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                             const isFemale = matchedPlayer?.gender === 'F';
                             const fideId = s.fideId || matchedPlayer?.fideId;
                             const cbxId = s.cbxId || matchedPlayer?.cbxId;
+                            const hasFide = isTournamentFideRated(activeTournament);
+                            const hasCbx = isTournamentCbxRated(activeTournament);
 
                             return (
                             <tr
@@ -868,6 +1059,42 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                                   <span className="text-stone-600">-</span>
                                 )}
                               </td>
+                              {hasFide && (
+                                <td className="py-2.5 px-3 text-center font-mono font-bold text-stone-800">
+                                  {s.fideRating && s.fideRating > 0 ? (
+                                    <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-900 border border-blue-200/70 font-mono font-bold text-xs" title="Rating no torneio">
+                                      {s.fideRating}
+                                    </span>
+                                  ) : (() => {
+                                    const fallback = matchedPlayer ? getPlayerRatingForTournament(matchedPlayer, activeTournament.type, 'fide') : undefined;
+                                    return fallback && fallback > 0 ? (
+                                      <span className="text-stone-500 font-mono text-xs" title="Rating do cadastro do atleta">
+                                        {fallback}
+                                      </span>
+                                    ) : (
+                                      <span className="text-stone-400 font-mono">-</span>
+                                    );
+                                  })()}
+                                </td>
+                              )}
+                              {hasCbx && (
+                                <td className="py-2.5 px-3 text-center font-mono font-bold text-stone-800">
+                                  {s.cbxRating && s.cbxRating > 0 ? (
+                                    <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-900 border border-emerald-200/70 font-mono font-bold text-xs" title="Rating no torneio">
+                                      {s.cbxRating}
+                                    </span>
+                                  ) : (() => {
+                                    const fallback = matchedPlayer ? getPlayerRatingForTournament(matchedPlayer, activeTournament.type, 'cbx') : undefined;
+                                    return fallback && fallback > 0 ? (
+                                      <span className="text-stone-500 font-mono text-xs" title="Rating do cadastro do atleta">
+                                        {fallback}
+                                      </span>
+                                    ) : (
+                                      <span className="text-stone-400 font-mono">-</span>
+                                    );
+                                  })()}
+                                </td>
+                              )}
                               <td className="py-2.5 px-3 font-mono text-stone-700">
                                 {fideId ? (
                                   <a
@@ -1021,6 +1248,91 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                     <Zap className="w-3.5 h-3.5" />
                     <span>Blitz</span>
                   </button>
+                </div>
+              </div>
+
+              {/* Validade de Rating (FIDE / CBX / Ambos) */}
+              <div>
+                <label className="block font-semibold text-stone-800 mb-1.5">
+                  Válido para Rating * <span className="text-[11px] font-normal text-stone-500">(Clique nas logos para ativar ou desativar)</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {/* FIDE Option */}
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, ratedFide: !formData.ratedFide })}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                      formData.ratedFide
+                        ? 'bg-blue-50/90 border-blue-500 text-blue-950 shadow-xs ring-2 ring-blue-500/20'
+                        : 'bg-stone-50 border-stone-200 text-stone-400 hover:bg-stone-100 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center p-1 bg-white border transition-colors ${
+                      formData.ratedFide ? 'border-blue-200 shadow-xs' : 'border-stone-200'
+                    }`}>
+                      <img
+                        src="https://www.fide.com/img/logo1.png"
+                        alt="FIDE"
+                        className={`w-6 h-6 object-contain transition-all duration-200 ${
+                          formData.ratedFide ? 'grayscale-0 opacity-100 scale-100' : 'grayscale opacity-35 scale-90'
+                        }`}
+                      />
+                    </div>
+                    <div className="text-left flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className="font-extrabold text-xs">Rating FIDE</span>
+                        {formData.ratedFide && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                      </div>
+                      <p className={`text-[10px] font-normal truncate ${formData.ratedFide ? 'text-blue-700' : 'text-stone-400'}`}>
+                        {formData.ratedFide ? 'Homologado FIDE' : 'Não pontua FIDE'}
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* CBX Option */}
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, ratedCbx: !formData.ratedCbx })}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                      formData.ratedCbx
+                        ? 'bg-emerald-50/90 border-emerald-500 text-emerald-950 shadow-xs ring-2 ring-emerald-500/20'
+                        : 'bg-stone-50 border-stone-200 text-stone-400 hover:bg-stone-100 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center p-1 bg-white border transition-colors ${
+                      formData.ratedCbx ? 'border-emerald-200 shadow-xs' : 'border-stone-200'
+                    }`}>
+                      <img
+                        src="https://cbx.org.br/files/textos/003659/000965.jpg"
+                        alt="CBX"
+                        className={`w-6 h-6 object-contain rounded-xs transition-all duration-200 ${
+                          formData.ratedCbx ? 'grayscale-0 opacity-100 scale-100' : 'grayscale opacity-35 scale-90'
+                        }`}
+                      />
+                    </div>
+                    <div className="text-left flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className="font-extrabold text-xs">Rating CBX</span>
+                        {formData.ratedCbx && <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                      </div>
+                      <p className={`text-[10px] font-normal truncate ${formData.ratedCbx ? 'text-emerald-700' : 'text-stone-400'}`}>
+                        {formData.ratedCbx ? 'Homologado CBX' : 'Não pontua CBX'}
+                      </p>
+                    </div>
+                  </button>
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[11px] text-stone-500 px-1">
+                  <span>
+                    {formData.ratedFide && formData.ratedCbx ? (
+                      <span className="text-stone-700 font-semibold">✓ Válido para ambos (FIDE + CBX)</span>
+                    ) : formData.ratedFide ? (
+                      <span className="text-blue-700 font-semibold">✓ Válido apenas para Rating Internacional (FIDE)</span>
+                    ) : formData.ratedCbx ? (
+                      <span className="text-emerald-700 font-semibold">✓ Válido apenas para Rating Nacional (CBX)</span>
+                    ) : (
+                      <span className="text-amber-700 font-semibold">Torneio não pontuável / amistoso</span>
+                    )}
+                  </span>
                 </div>
               </div>
 
@@ -1219,6 +1531,91 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                     <Zap className="w-3.5 h-3.5" />
                     <span>Blitz</span>
                   </button>
+                </div>
+              </div>
+
+              {/* Validade de Rating (FIDE / CBX / Ambos) */}
+              <div>
+                <label className="block font-semibold text-stone-800 mb-1.5">
+                  Válido para Rating * <span className="text-[11px] font-normal text-stone-500">(Clique nas logos para ativar ou desativar)</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {/* FIDE Option */}
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, ratedFide: !formData.ratedFide })}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                      formData.ratedFide
+                        ? 'bg-blue-50/90 border-blue-500 text-blue-950 shadow-xs ring-2 ring-blue-500/20'
+                        : 'bg-stone-50 border-stone-200 text-stone-400 hover:bg-stone-100 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center p-1 bg-white border transition-colors ${
+                      formData.ratedFide ? 'border-blue-200 shadow-xs' : 'border-stone-200'
+                    }`}>
+                      <img
+                        src="https://www.fide.com/img/logo1.png"
+                        alt="FIDE"
+                        className={`w-6 h-6 object-contain transition-all duration-200 ${
+                          formData.ratedFide ? 'grayscale-0 opacity-100 scale-100' : 'grayscale opacity-35 scale-90'
+                        }`}
+                      />
+                    </div>
+                    <div className="text-left flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className="font-extrabold text-xs">Rating FIDE</span>
+                        {formData.ratedFide && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                      </div>
+                      <p className={`text-[10px] font-normal truncate ${formData.ratedFide ? 'text-blue-700' : 'text-stone-400'}`}>
+                        {formData.ratedFide ? 'Homologado FIDE' : 'Não pontua FIDE'}
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* CBX Option */}
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, ratedCbx: !formData.ratedCbx })}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                      formData.ratedCbx
+                        ? 'bg-emerald-50/90 border-emerald-500 text-emerald-950 shadow-xs ring-2 ring-emerald-500/20'
+                        : 'bg-stone-50 border-stone-200 text-stone-400 hover:bg-stone-100 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center p-1 bg-white border transition-colors ${
+                      formData.ratedCbx ? 'border-emerald-200 shadow-xs' : 'border-stone-200'
+                    }`}>
+                      <img
+                        src="https://cbx.org.br/files/textos/003659/000965.jpg"
+                        alt="CBX"
+                        className={`w-6 h-6 object-contain rounded-xs transition-all duration-200 ${
+                          formData.ratedCbx ? 'grayscale-0 opacity-100 scale-100' : 'grayscale opacity-35 scale-90'
+                        }`}
+                      />
+                    </div>
+                    <div className="text-left flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className="font-extrabold text-xs">Rating CBX</span>
+                        {formData.ratedCbx && <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                      </div>
+                      <p className={`text-[10px] font-normal truncate ${formData.ratedCbx ? 'text-emerald-700' : 'text-stone-400'}`}>
+                        {formData.ratedCbx ? 'Homologado CBX' : 'Não pontua CBX'}
+                      </p>
+                    </div>
+                  </button>
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[11px] text-stone-500 px-1">
+                  <span>
+                    {formData.ratedFide && formData.ratedCbx ? (
+                      <span className="text-stone-700 font-semibold">✓ Válido para ambos (FIDE + CBX)</span>
+                    ) : formData.ratedFide ? (
+                      <span className="text-blue-700 font-semibold">✓ Válido apenas para Rating Internacional (FIDE)</span>
+                    ) : formData.ratedCbx ? (
+                      <span className="text-emerald-700 font-semibold">✓ Válido apenas para Rating Nacional (CBX)</span>
+                    ) : (
+                      <span className="text-amber-700 font-semibold">Torneio não pontuável / amistoso</span>
+                    )}
+                  </span>
                 </div>
               </div>
 
@@ -1487,27 +1884,67 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       {isScoreModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-2xl max-w-2xl w-full border border-stone-200 shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100 flex-wrap gap-2">
               <div>
                 <h3 className="text-base font-bold text-stone-900">Lançamento de Pontuações & Colocações</h3>
-                <p className="text-xs text-stone-700">Informe a colocação (posição) e a pontuação de cada enxadrista</p>
+                <p className="text-xs text-stone-700">Informe a colocação, pontuação e ratings do torneio para cada enxadrista</p>
               </div>
-              <button onClick={() => setIsScoreModalOpen(false)}>
-                <X className="w-5 h-5 text-stone-600" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAutoLoadRatings}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer hover:border-amber-300"
+                  title="Carregar ratings FIDE e/ou CBX correspondentes aos atletas cadastrados"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Carregar Ratings</span>
+                </button>
+                <button onClick={() => setIsScoreModalOpen(false)}>
+                  <X className="w-5 h-5 text-stone-600" />
+                </button>
+              </div>
             </div>
+
+            {ratingLoadFeedback && (
+              <div className="p-2.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center justify-between animate-in fade-in">
+                <span>{ratingLoadFeedback}</span>
+                <button onClick={() => setRatingLoadFeedback(null)} className="text-emerald-600 hover:text-emerald-900 cursor-pointer">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
             <div className="space-y-3">
               {editingStandings.map((st, idx) => {
-                const isFemale = players.find(p => p.id === st.playerId || p.name === st.playerName || (p.fideId && p.fideId === st.fideId))?.gender === 'F';
+                const matched = findMatchingPlayer(st, players);
+                const isFemale = matched?.gender === 'F';
+                const isFideRated = isTournamentFideRated(selectedTournament);
+                const isCbxRated = isTournamentCbxRated(selectedTournament);
+
                 return (
                 <div key={st.playerId || idx} className="p-3 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className={`font-bold ${isFemale ? 'text-pink-600' : 'text-stone-900'}`}>{st.playerName}</span>
-                    <span className="font-mono text-stone-700">{st.title && st.title !== 'Sem Título' ? st.title : 'S/T'}</span>
+                  <div className="flex items-center justify-between text-xs flex-wrap gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`font-bold ${isFemale ? 'text-pink-600' : 'text-stone-900'}`}>{st.playerName}</span>
+                      {st.title && st.title !== 'Sem Título' && (
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-stone-900 text-white">
+                          {st.title}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] font-mono text-stone-500">
+                      {st.fideId && <span>FIDE: <strong className="text-stone-700">{st.fideId}</strong></span>}
+                      {st.cbxId && <span>CBX: <strong className="text-stone-700">{st.cbxId}</strong></span>}
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className={`grid gap-3 text-xs ${
+                    isFideRated && isCbxRated
+                      ? 'grid-cols-2 sm:grid-cols-4'
+                      : isFideRated || isCbxRated
+                      ? 'grid-cols-2 sm:grid-cols-3'
+                      : 'grid-cols-2'
+                  }`}>
                     <div>
                       <label className="block text-[11px] font-semibold text-stone-700 mb-1">Colocação (Posição)</label>
                       <input
@@ -1540,6 +1977,68 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                         className="w-full p-2 bg-white border border-stone-200 rounded-lg font-black font-mono focus:ring-2 focus:ring-stone-900 focus:outline-hidden"
                       />
                     </div>
+
+                    {isFideRated && (
+                      <div>
+                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-stone-700 mb-1">
+                          <img src="https://www.fide.com/img/logo1.png" width="13" height="13" alt="FIDE" className="shrink-0" />
+                          <span>Rating FIDE</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="3500"
+                          placeholder="Sem rating"
+                          value={st.fideRating !== undefined && st.fideRating !== null && st.fideRating > 0 ? st.fideRating : ''}
+                          onChange={(e) => {
+                            const raw = e.target.value.trim();
+                            const num = raw === '' ? 0 : parseInt(raw, 10);
+                            const val = !isNaN(num) && num > 0 ? num : undefined;
+                            setEditingStandings((prev) =>
+                              prev.map((item, i) => {
+                                if (i !== idx) return item;
+                                const updated = { ...item };
+                                if (val) updated.fideRating = val;
+                                else delete updated.fideRating;
+                                return updated;
+                              })
+                            );
+                          }}
+                          className="w-full p-2 bg-white border border-stone-200 rounded-lg font-mono font-semibold text-xs focus:ring-2 focus:ring-stone-900 focus:outline-hidden"
+                        />
+                      </div>
+                    )}
+
+                    {isCbxRated && (
+                      <div>
+                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-stone-700 mb-1">
+                          <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="13" height="13" alt="CBX" className="shrink-0 rounded-xs" />
+                          <span>Rating CBX</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="3500"
+                          placeholder="Sem rating"
+                          value={st.cbxRating !== undefined && st.cbxRating !== null && st.cbxRating > 0 ? st.cbxRating : ''}
+                          onChange={(e) => {
+                            const raw = e.target.value.trim();
+                            const num = raw === '' ? 0 : parseInt(raw, 10);
+                            const val = !isNaN(num) && num > 0 ? num : undefined;
+                            setEditingStandings((prev) =>
+                              prev.map((item, i) => {
+                                if (i !== idx) return item;
+                                const updated = { ...item };
+                                if (val) updated.cbxRating = val;
+                                else delete updated.cbxRating;
+                                return updated;
+                              })
+                            );
+                          }}
+                          className="w-full p-2 bg-white border border-stone-200 rounded-lg font-mono font-semibold text-xs focus:ring-2 focus:ring-stone-900 focus:outline-hidden"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
                 );
