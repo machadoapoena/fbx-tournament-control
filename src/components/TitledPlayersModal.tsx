@@ -244,7 +244,7 @@ export const TitledPlayersModal: React.FC<TitledPlayersModalProps> = ({
         <div className="px-6 py-3 bg-stone-100/90 border-b border-stone-200 flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1 mr-1">
             <Award className="w-3.5 h-3.5 text-stone-500" />
-            Filtrar por Titulação:
+            Filtrar:
           </span>
 
           {/* Tag: TODOS */}
@@ -257,7 +257,7 @@ export const TitledPlayersModal: React.FC<TitledPlayersModalProps> = ({
                 : 'bg-white text-stone-700 hover:bg-stone-200/80 border border-stone-200'
             }`}
           >
-            <span>Todos os Titulados</span>
+            <span>Todos</span>
             <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
               selectedTitle === 'TODOS' ? 'bg-stone-800 text-amber-300' : 'bg-stone-100 text-stone-600'
             }`}>
