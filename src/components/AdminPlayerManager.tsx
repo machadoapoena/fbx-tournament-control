@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Player } from '../types/chess';
-import { calculateAge, exportPlayersToCSV, exportPlayersToPDF } from '../lib/exportUtils';
+import { calculateAge, exportPlayersToCSV, exportPlayersToPDF, formatDisplayDate } from '../lib/exportUtils';
 import { 
   Plus, 
   Search, 
@@ -262,7 +262,7 @@ export const AdminPlayerManager: React.FC<AdminPlayerManagerProps> = ({
                       {/* Birth / Age */}
                       <td className="py-3.5 px-3 text-center font-mono">
                         <div className="text-stone-900 font-medium">
-                          {player.birthDate ? player.birthDate.split('-').reverse().join('/') : '-'}
+                          {formatDisplayDate(player.birthDate)}
                         </div>
                         <div className="text-[10px] text-stone-700">
                           {age > 0 ? `${age} anos` : ''}
@@ -280,7 +280,7 @@ export const AdminPlayerManager: React.FC<AdminPlayerManagerProps> = ({
                               : 'bg-stone-100 text-stone-700'
                           }`}
                         >
-                          {player.gender}
+                          {player.gender === 'F' ? 'F' : player.gender === 'M' ? 'M' : (player.gender || '-')}
                         </span>
                       </td>
 

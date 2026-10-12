@@ -75,10 +75,10 @@ export function exportPlayersToCSV(players: Player[], filename = 'jogadores_xadr
   const rows = players.map(p => [
     p.id || '',
     `"${(p.name || '').replace(/"/g, '""')}"`,
-    p.title || 'Sem Título',
-    p.birthDate || '',
+    (p.title && p.title !== 'Sem Título') ? p.title : '-',
+    formatDisplayDate(p.birthDate),
     calculateAge(p.birthDate),
-    p.gender === 'M' ? 'Masculino' : p.gender === 'F' ? 'Feminino' : 'Outro',
+    p.gender === 'F' ? 'F' : p.gender === 'M' ? 'M' : (p.gender || '-'),
     p.fideId || '',
     p.cbxId || '',
     p.country || 'Brasil',
@@ -126,6 +126,37 @@ export function formatSwissBirthday(dateStr?: string): string {
     const day = parts[2].padStart(2, '0');
     return `${day}.${month}.${year}`;
   }
+  return trimmed;
+}
+
+// Helper to format date as DD/MM/YYYY
+export function formatDisplayDate(dateStr?: string): string {
+  if (!dateStr) return '-';
+  const trimmed = dateStr.trim();
+  if (!trimmed || trimmed === '-') return '-';
+
+  // Already DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // DD/MM/YYYY with single digit day/month
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
+    const parts = trimmed.split('/');
+    if (parts.length === 3) {
+      return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+    }
+  }
+
+  // YYYY-MM-DD
+  const parts = trimmed.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    const year = parts[0];
+    const month = parts[1].padStart(2, '0');
+    const day = parts[2].padStart(2, '0');
+    return `${day}/${month}/${year}`;
+  }
+
   return trimmed;
 }
 
@@ -514,12 +545,16 @@ export function exportPlayersToPDF(players: Player[], title = 'Relatório Geral 
       p.ratingCbxBlitz || '-'
     ].join(' / ');
 
+    const titleDisplay = (p.title && p.title !== 'Sem Título') ? p.title : '-';
+    const genderDisplay = p.gender === 'F' ? 'F' : p.gender === 'M' ? 'M' : (p.gender || '-');
+    const birthDisplay = formatDisplayDate(p.birthDate);
+
     return [
       i + 1,
       p.name,
-      p.title || '-',
-      p.gender === 'M' ? 'Masc' : p.gender === 'F' ? 'Fem' : 'Outro',
-      p.birthDate || '-',
+      titleDisplay,
+      genderDisplay,
+      birthDisplay,
       calculateAge(p.birthDate),
       p.fideId || '-',
       p.cbxId || '-',
