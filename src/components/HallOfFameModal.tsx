@@ -61,7 +61,7 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({
       onClick={onClose}
     >
       <div 
-        className="relative bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-stone-200 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
+        className="relative bg-white rounded-3xl max-w-3xl sm:max-w-4xl w-full shadow-2xl border border-stone-200 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
         role="dialog"
         aria-modal="true"
         aria-labelledby="hall-of-fame-title"
