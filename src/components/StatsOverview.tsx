@@ -1336,6 +1336,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
           isOpen={!!selectedHallOfFamePlayer}
           onClose={() => setSelectedHallOfFamePlayer(null)}
           player={selectedHallOfFamePlayer}
+          tournaments={tournaments}
         />
       )}
 

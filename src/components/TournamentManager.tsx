@@ -3,7 +3,8 @@ import { Tournament, TournamentStanding, Player, SwissExportConfig, TournamentCa
 import { 
   exportTournamentStandingsToPDF, 
   exportToSwissManagerExcel,
-  exportToSwissManagerXML 
+  exportToSwissManagerXML,
+  formatDisplayDate 
 } from '../lib/exportUtils';
 import { 
   isPlayerEnrolledInTournament, 
@@ -763,7 +764,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                         )}
                       </div>
                       <span className={`text-xs font-mono ${isSelected ? 'text-stone-300' : 'text-stone-700'}`}>
-                        {t.startDate}
+                        {formatDisplayDate(t.startDate)}
                       </span>
                     </div>
 
@@ -901,7 +902,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                   <div>
                     <span className="text-stone-700 block mb-0.5">Data de Início</span>
                     <span className="font-bold text-stone-900 font-mono">
-                      {activeTournament.startDate.split('-').reverse().join('/')}
+                      {formatDisplayDate(activeTournament.startDate)}
                     </span>
                   </div>
 
@@ -979,7 +980,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                               <th className="py-2.5 px-3 text-center">
                                 <span className="inline-flex items-center gap-1 justify-center">
                                   <img src="https://www.fide.com/img/logo1.png" width="13" height="13" alt="FIDE" className="shrink-0" />
-                                  <span>Rtg. FIDE</span>
+                                 
                                 </span>
                               </th>
                             )}
@@ -987,7 +988,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                               <th className="py-2.5 px-3 text-center">
                                 <span className="inline-flex items-center gap-1 justify-center">
                                   <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="13" height="13" alt="CBX" className="shrink-0 rounded-xs" />
-                                  <span>Rtg. CBX</span>
+                                  
                                 </span>
                               </th>
                             )}

@@ -522,7 +522,7 @@ export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
                   className="inline-flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-xl bg-stone-800/90 border border-stone-700/90 hover:border-stone-500 shadow-2xs group transition-all"
                 >
                   {player.title && player.title !== 'Sem Título' && (
-                    <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-extrabold bg-stone-700 text-amber-300">
+                    <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-stone-900 text-white border border-stone-700">
                       {player.title}
                     </span>
                   )}
