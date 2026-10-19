@@ -1024,6 +1024,7 @@ export const PublicPlayerTable: React.FC<PublicPlayerTableProps> = ({
         isOpen={!!internalProfilePlayer}
         onClose={() => setInternalProfilePlayer(null)}
         tournaments={tournaments}
+        allPlayers={initialPlayersProp}
       />
     </div>
   );

@@ -35,6 +35,9 @@ function cleanStandingForFirestore(s: TournamentStanding): Record<string, any> {
   if (s.wins !== undefined && s.wins !== null && !isNaN(Number(s.wins))) {
     item.wins = Number(s.wins);
   }
+  if (s.genderRank !== undefined && s.genderRank !== null && !isNaN(Number(s.genderRank))) {
+    item.genderRank = Number(s.genderRank);
+  }
   if (s.fideRating !== undefined && s.fideRating !== null && !isNaN(Number(s.fideRating)) && Number(s.fideRating) > 0) {
     item.fideRating = Number(s.fideRating);
   }
@@ -131,6 +134,8 @@ export const tournamentService = {
         type: tournament.type || 'standard',
         ratedFide: tournament.ratedFide !== false,
         ratedCbx: tournament.ratedCbx !== false,
+        rankingType: tournament.rankingType || (tournament.genderSeparated ? 'gender_separated' : 'absolute'),
+        genderSeparated: tournament.genderSeparated === true || tournament.rankingType === 'gender_separated',
         status: tournament.status || 'Planejado',
         arbiters: tournament.arbiters?.trim() || '',
         organizer: tournament.organizer?.trim() || '',

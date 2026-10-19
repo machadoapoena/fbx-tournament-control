@@ -9,7 +9,8 @@ import {
 import { 
   isPlayerEnrolledInTournament, 
   findMatchingPlayer, 
-  normalizeName 
+  normalizeName,
+  computeStandingsGenderRanks 
 } from '../lib/playerMatching';
 import { 
   Swords, 
@@ -133,6 +134,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     type: 'standard',
     ratedFide: true,
     ratedCbx: true,
+    rankingType: 'absolute',
+    genderSeparated: false,
     status: 'Planejado',
     arbiters: '',
     organizer: '',
@@ -152,6 +155,11 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
   const isTournamentCbxRated = (t?: Partial<Tournament> | null): boolean => {
     if (!t) return false;
     return t.ratedCbx !== false;
+  };
+
+  const isTournamentGenderSeparated = (t?: Partial<Tournament> | null): boolean => {
+    if (!t) return false;
+    return t.rankingType === 'gender_separated' || t.genderSeparated === true;
   };
 
   const getPlayerRatingForTournament = (
@@ -180,6 +188,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
 
   // Standings editor state
   const [editingStandings, setEditingStandings] = useState<TournamentStanding[]>([]);
+  const [standingsGenderFilter, setStandingsGenderFilter] = useState<'all' | 'M' | 'F'>('all');
 
   // Update active tournament reference if list changes
   React.useEffect(() => {
@@ -203,6 +212,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       type: 'standard',
       ratedFide: true,
       ratedCbx: true,
+      rankingType: 'absolute',
+      genderSeparated: false,
       status: 'Planejado',
       arbiters: '',
       organizer: '',
@@ -225,6 +236,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       type: t.type || 'standard',
       ratedFide: t.ratedFide !== false,
       ratedCbx: t.ratedCbx !== false,
+      rankingType: t.rankingType || (t.genderSeparated ? 'gender_separated' : 'absolute'),
+      genderSeparated: t.genderSeparated === true || t.rankingType === 'gender_separated',
       status: t.status,
       arbiters: t.arbiters || '',
       organizer: t.organizer || '',
@@ -254,6 +267,18 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     if (!term) return [];
     return players.filter((p) => p.name.toLowerCase().includes(term));
   }, [players, playerSearchTerm]);
+
+  const displayedStandings = React.useMemo(() => {
+    if (!activeTournament?.standings) return [];
+    if (!isTournamentGenderSeparated(activeTournament) || standingsGenderFilter === 'all') {
+      return activeTournament.standings;
+    }
+    return activeTournament.standings.filter((s) => {
+      const matched = findMatchingPlayer(s, players);
+      const isFemale = matched?.gender === 'F';
+      return standingsGenderFilter === 'F' ? isFemale : !isFemale;
+    });
+  }, [activeTournament, standingsGenderFilter, players]);
 
   const handleOpenParticipantsModal = () => {
     if (!activeTournament) return;
@@ -422,13 +447,32 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       return b.points - a.points;
     });
 
+    const isGenderSeparated = selectedTournament.rankingType === 'gender_separated' || selectedTournament.genderSeparated === true;
+    let maleCount = 0;
+    let femaleCount = 0;
+
     const sanitized: TournamentStanding[] = sorted.map((st) => {
+      const matched = findMatchingPlayer(st, players);
+      const isFemale = matched?.gender === 'F';
+      let genderRank: number | undefined;
+
+      if (isGenderSeparated) {
+        if (isFemale) {
+          femaleCount++;
+          genderRank = femaleCount;
+        } else {
+          maleCount++;
+          genderRank = maleCount;
+        }
+      }
+
       const item: TournamentStanding = {
         playerId: st.playerId || '',
         playerName: st.playerName || '',
         points: typeof st.points === 'number' && !isNaN(st.points) ? Number(st.points) : 0,
         rank: typeof st.rank === 'number' && !isNaN(st.rank) ? Number(st.rank) : 1,
       };
+      if (genderRank !== undefined) item.genderRank = genderRank;
       if (st.title && String(st.title).trim()) item.title = String(st.title).trim();
       if (st.fideId && String(st.fideId).trim()) item.fideId = String(st.fideId).trim();
       if (st.cbxId && String(st.cbxId).trim()) item.cbxId = String(st.cbxId).trim();
@@ -762,6 +806,18 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                             <span>CBX</span>
                           </span>
                         )}
+                        {isTournamentGenderSeparated(t) && (
+                          <span
+                            className={`inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                              isSelected
+                                ? 'bg-purple-950/70 text-purple-200 border-purple-800'
+                                : 'bg-purple-50 text-purple-800 border-purple-200'
+                            }`}
+                            title="Classificação separada por naipe"
+                          >
+                            Naipe
+                          </span>
+                        )}
                       </div>
                       <span className={`text-xs font-mono ${isSelected ? 'text-stone-300' : 'text-stone-700'}`}>
                         {formatDisplayDate(t.startDate)}
@@ -816,6 +872,17 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                       {isTournamentCbxRated(activeTournament) && (
                         <span>
                           <img src="https://cbx.org.br/files/textos/003659/000965.jpg" width="25"  alt="CBX" className="shrink-0 rounded-xs" />
+                        </span>
+                      )}
+                      {isTournamentGenderSeparated(activeTournament) ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-200" title="Premiação e classificação separada por naipe masculino e feminino">
+                          <Users className="w-3 h-3 text-purple-700" />
+                          Separado por Naipe
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-stone-100 text-stone-700 border border-stone-200" title="Premiação e classificação unificada">
+                          <Trophy className="w-3 h-3 text-amber-500" />
+                          Absoluto
                         </span>
                       )}
                     </div>
@@ -924,14 +991,55 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                 {/* Standings Table Section */}
                 <div className="pt-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2">
-                      <Trophy className="w-4 h-4 text-amber-500" />
-                      <h3 className="font-bold text-sm text-stone-900">
-                        Classificação Oficial
-                      </h3>
-                      <span className="text-xs font-mono text-stone-700">
-                        ({(activeTournament.standings || []).length})
-                      </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5">
+                        <Trophy className="w-4 h-4 text-amber-500" />
+                        <h3 className="font-bold text-sm text-stone-900">
+                          Classificação Oficial
+                        </h3>
+                        <span className="text-xs font-mono text-stone-700">
+                          ({(activeTournament.standings || []).length})
+                        </span>
+                      </div>
+
+                      {/* Filter by gender when tournament is gender-separated */}
+                      {isTournamentGenderSeparated(activeTournament) && (activeTournament.standings || []).length > 0 && (
+                        <div className="inline-flex items-center gap-1 bg-stone-100 p-1 rounded-xl border border-stone-200 ml-2">
+                          <button
+                            type="button"
+                            onClick={() => setStandingsGenderFilter('all')}
+                            className={`px-2.5 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              standingsGenderFilter === 'all'
+                                ? 'bg-stone-900 text-white shadow-2xs'
+                                : 'text-stone-600 hover:text-stone-900'
+                            }`}
+                          >
+                            Todos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStandingsGenderFilter('M')}
+                            className={`px-2.5 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                              standingsGenderFilter === 'M'
+                                ? 'bg-sky-600 text-white shadow-2xs'
+                                : 'text-stone-600 hover:text-stone-900'
+                            }`}
+                          >
+                            <span>Masculino</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStandingsGenderFilter('F')}
+                            className={`px-2.5 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                              standingsGenderFilter === 'F'
+                                ? 'bg-pink-600 text-white shadow-2xs'
+                                : 'text-stone-600 hover:text-stone-900'
+                            }`}
+                          >
+                            <span>Feminino</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {isAdmin && (
@@ -999,36 +1107,83 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-stone-100">
-                          {activeTournament.standings.map((s, idx) => {
+                          {displayedStandings.map((s, idx) => {
                             const matchedPlayer = findMatchingPlayer(s, players);
                             const isFemale = matchedPlayer?.gender === 'F';
                             const fideId = s.fideId || matchedPlayer?.fideId;
                             const cbxId = s.cbxId || matchedPlayer?.cbxId;
                             const hasFide = isTournamentFideRated(activeTournament);
                             const hasCbx = isTournamentCbxRated(activeTournament);
+                            const isSeparated = isTournamentGenderSeparated(activeTournament);
+
+                            const genderRank = (() => {
+                              if (s.genderRank !== undefined && s.genderRank > 0) return s.genderRank;
+                              if (!isSeparated) return s.rank || idx + 1;
+                              const sameGenderList = (activeTournament.standings || []).filter(item => {
+                                const m = findMatchingPlayer(item, players);
+                                const mIsFemale = m?.gender === 'F';
+                                return isFemale ? mIsFemale : !mIsFemale;
+                              });
+                              const foundIndex = sameGenderList.findIndex(item => (item.playerId && item.playerId === s.playerId) || item.playerName === s.playerName);
+                              return foundIndex >= 0 ? foundIndex + 1 : (s.rank || idx + 1);
+                            })();
+
+                            const isGold = isSeparated ? genderRank === 1 : (s.rank === 1 || idx === 0);
+                            const isSilver = isSeparated ? genderRank === 2 : (s.rank === 2 || idx === 1);
+                            const isBronze = isSeparated ? genderRank === 3 : (s.rank === 3 || idx === 2);
 
                             return (
                             <tr
                               key={s.playerId || idx}
                               className={`hover:bg-stone-50 transition-colors ${
-                                idx === 0 ? 'bg-amber-50/40 font-semibold' : ''
+                                isGold ? 'bg-amber-50/40 font-semibold' : ''
                               }`}
                             >
                               <td className="py-2.5 px-3 text-center font-mono font-bold">
-                                {idx === 0 ? (
-                                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-400 text-stone-900 text-[11px]">
-                                    1
-                                  </span>
-                                ) : idx === 1 ? (
-                                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-stone-300 text-stone-900 text-[11px]">
-                                    2
-                                  </span>
-                                ) : idx === 2 ? (
-                                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-700/60 text-white text-[11px]">
-                                    3
-                                  </span>
+                                {isSeparated ? (
+                                  <div className="flex flex-col items-center justify-center">
+                                    <div className="flex items-center gap-1">
+                                      {isGold ? (
+                                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-400 text-stone-900 text-[11px] font-bold shadow-2xs" title="1º Lugar no Naipe">
+                                          1
+                                        </span>
+                                      ) : isSilver ? (
+                                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-stone-300 text-stone-900 text-[11px] font-bold shadow-2xs" title="2º Lugar no Naipe">
+                                          2
+                                        </span>
+                                      ) : isBronze ? (
+                                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-700/60 text-white text-[11px] font-bold shadow-2xs" title="3º Lugar no Naipe">
+                                          3
+                                        </span>
+                                      ) : (
+                                        <span className="text-stone-700 font-bold">{genderRank}º</span>
+                                      )}
+                                      <span className={`text-[9px] font-bold px-1 rounded ${isFemale ? 'bg-pink-100 text-pink-800' : 'bg-sky-100 text-sky-800'}`}>
+                                        {isFemale ? 'F' : 'M'}
+                                      </span>
+                                    </div>
+                                    {s.rank && s.rank !== genderRank && (
+                                      <span className="text-[9px] text-stone-500 font-normal mt-0.5">
+                                        ({s.rank}º geral)
+                                      </span>
+                                    )}
+                                  </div>
                                 ) : (
-                                  s.rank || idx + 1
+                                  idx === 0 ? (
+                                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-400 text-stone-900 text-[11px]">
+                                      1
+                                    </span>
+                                  ) : idx === 1 ? (
+                                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-stone-300 text-stone-900 text-[11px]">
+                                      2
+                                    </span>
+                                  ) : idx === 2 ? (
+                                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-700/60 text-white text-[11px]">
+                                      3
+                                    </span>
+                                  ) : (
+                                    s.rank || idx + 1
+                                  )
                                 )}
                               </td>
                               <td className="py-2.5 px-2 text-center">
@@ -1328,6 +1483,64 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                 </div>
               </div>
 
+              {/* Formato de Premiação / Classificação (Absoluto vs Separado por Naipe) */}
+              <div>
+                <label className="block font-semibold text-stone-800 mb-1.5">
+                  Classificação e Premiação *
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, rankingType: 'absolute', genderSeparated: false })}
+                    className={`flex flex-col p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      formData.rankingType !== 'gender_separated' && !formData.genderSeparated
+                        ? 'bg-stone-900 text-white border-stone-900 shadow-xs ring-2 ring-stone-900/20'
+                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-extrabold text-xs flex items-center gap-1.5">
+                        <Trophy className={`w-3.5 h-3.5 ${formData.rankingType !== 'gender_separated' && !formData.genderSeparated ? 'text-amber-400' : 'text-stone-500'}`} />
+                        Absoluto (Geral)
+                      </span>
+                      {formData.rankingType !== 'gender_separated' && !formData.genderSeparated && (
+                        <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      )}
+                    </div>
+                    <p className={`text-[10px] leading-tight ${
+                      formData.rankingType !== 'gender_separated' && !formData.genderSeparated ? 'text-stone-300' : 'text-stone-500'
+                    }`}>
+                      Classificação unificada entre todos os atletas. Pódio único (1º, 2º e 3º).
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, rankingType: 'gender_separated', genderSeparated: true })}
+                    className={`flex flex-col p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      formData.rankingType === 'gender_separated' || formData.genderSeparated
+                        ? 'bg-purple-900 text-white border-purple-900 shadow-xs ring-2 ring-purple-600/30'
+                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-extrabold text-xs flex items-center gap-1.5">
+                        <Users className={`w-3.5 h-3.5 ${formData.rankingType === 'gender_separated' || formData.genderSeparated ? 'text-purple-300' : 'text-stone-500'}`} />
+                        Separado por Naipe
+                      </span>
+                      {(formData.rankingType === 'gender_separated' || formData.genderSeparated) && (
+                        <Check className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                      )}
+                    </div>
+                    <p className={`text-[10px] leading-tight ${
+                      formData.rankingType === 'gender_separated' || formData.genderSeparated ? 'text-purple-200' : 'text-stone-500'
+                    }`}>
+                      Pódios e premiações independentes para o naipe Masculino e Feminino.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-semibold text-stone-800 mb-1">Data de Início *</label>
@@ -1608,6 +1821,64 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                       <span className="text-amber-700 font-semibold">Torneio não pontuável / amistoso</span>
                     )}
                   </span>
+                </div>
+              </div>
+
+              {/* Formato de Premiação / Classificação (Absoluto vs Separado por Naipe) */}
+              <div>
+                <label className="block font-semibold text-stone-800 mb-1.5">
+                  Classificação e Premiação *
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, rankingType: 'absolute', genderSeparated: false })}
+                    className={`flex flex-col p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      formData.rankingType !== 'gender_separated' && !formData.genderSeparated
+                        ? 'bg-stone-900 text-white border-stone-900 shadow-xs ring-2 ring-stone-900/20'
+                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-extrabold text-xs flex items-center gap-1.5">
+                        <Trophy className={`w-3.5 h-3.5 ${formData.rankingType !== 'gender_separated' && !formData.genderSeparated ? 'text-amber-400' : 'text-stone-500'}`} />
+                        Absoluto (Geral)
+                      </span>
+                      {formData.rankingType !== 'gender_separated' && !formData.genderSeparated && (
+                        <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      )}
+                    </div>
+                    <p className={`text-[10px] leading-tight ${
+                      formData.rankingType !== 'gender_separated' && !formData.genderSeparated ? 'text-stone-300' : 'text-stone-500'
+                    }`}>
+                      Classificação unificada entre todos os atletas. Pódio único com os 3 primeiros colocados gerais.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, rankingType: 'gender_separated', genderSeparated: true })}
+                    className={`flex flex-col p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      formData.rankingType === 'gender_separated' || formData.genderSeparated
+                        ? 'bg-purple-900 text-white border-purple-900 shadow-xs ring-2 ring-purple-600/30'
+                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-extrabold text-xs flex items-center gap-1.5">
+                        <Users className={`w-3.5 h-3.5 ${formData.rankingType === 'gender_separated' || formData.genderSeparated ? 'text-purple-300' : 'text-stone-500'}`} />
+                        Separado por Naipe
+                      </span>
+                      {(formData.rankingType === 'gender_separated' || formData.genderSeparated) && (
+                        <Check className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                      )}
+                    </div>
+                    <p className={`text-[10px] leading-tight ${
+                      formData.rankingType === 'gender_separated' || formData.genderSeparated ? 'text-purple-200' : 'text-stone-500'
+                    }`}>
+                      Pódios e premiações independentes para o naipe Masculino e Feminino.
+                    </p>
+                  </button>
                 </div>
               </div>
 
@@ -2148,6 +2419,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
           isOpen={!!internalProfilePlayer}
           onClose={() => setInternalProfilePlayer(null)}
           tournaments={tournaments}
+          allPlayers={players}
         />
       )}
     </div>

@@ -193,3 +193,31 @@ export function findMatchingPlayer(
   // 3. Match with doesStandingMatchPlayer
   return players.find((p) => doesStandingMatchPlayer(standing, p));
 }
+
+/**
+ * Computes placement per gender for a tournament's standings.
+ * Returns a Map linking each standing to its rank within its gender (1st male, 2nd male, 1st female, etc.).
+ */
+export function computeStandingsGenderRanks(
+  standings: TournamentStanding[],
+  players: Player[]
+): Map<TournamentStanding, { genderRank: number; gender: 'M' | 'F' | 'Outro' }> {
+  const result = new Map<TournamentStanding, { genderRank: number; gender: 'M' | 'F' | 'Outro' }>();
+  let maleCount = 0;
+  let femaleCount = 0;
+
+  // Standings are ordered by rank/points
+  standings.forEach((st) => {
+    const matched = findMatchingPlayer(st, players);
+    const gender = matched?.gender === 'F' ? 'F' : 'M';
+    if (gender === 'F') {
+      femaleCount++;
+      result.set(st, { genderRank: femaleCount, gender: 'F' });
+    } else {
+      maleCount++;
+      result.set(st, { genderRank: maleCount, gender: 'M' });
+    }
+  });
+
+  return result;
+}

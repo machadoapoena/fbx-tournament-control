@@ -83,6 +83,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
   const [spotlightModality, setSpotlightModality] = useState<SpotlightModality>('standard');
   const [spotlightCategory, setSpotlightCategory] = useState<SpotlightCategory>('TODOS');
   const [selectedHallOfFamePlayer, setSelectedHallOfFamePlayer] = useState<HallOfFamePlayer | null>(null);
+  const [hallOfFameNaipeFilter, setHallOfFameNaipeFilter] = useState<'all' | 'M' | 'F'>('all');
   const [isTitledModalOpen, setIsTitledModalOpen] = useState(false);
   const [selectedTitleFilter, setSelectedTitleFilter] = useState<string | null>(null);
 
@@ -100,61 +101,147 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
     finishedTournaments.forEach((tourn) => {
       if (!tourn.standings || tourn.standings.length === 0) return;
 
-      tourn.standings.forEach((st) => {
-        // Only top 3 (1º, 2º, 3º lugar) count as podium
-        if (!st.rank || st.rank < 1 || st.rank > 3) return;
+      const isGenderSeparated = tourn.rankingType === 'gender_separated' || tourn.genderSeparated === true;
 
-        // Try matching with player in players list using robust helper
-        const matched = findMatchingPlayer(st, players);
+      if (isGenderSeparated) {
+        // Sort standings first to ensure deterministic calculation by points/rank
+        const sortedStandings = [...tourn.standings].sort((a, b) => {
+          const rA = a.rank !== undefined ? a.rank : 999;
+          const rB = b.rank !== undefined ? b.rank : 999;
+          if (rA !== rB) return rA - rB;
+          return (b.points || 0) - (a.points || 0);
+        });
 
-        const playerId = matched?.id || st.playerId || st.fideId || st.playerName.trim().toLowerCase();
-        const playerName = matched?.name || st.playerName;
-        const playerTitle = matched?.title || st.title;
-        const playerGender = matched?.gender;
-        const playerState = matched?.state;
-        const playerFideId = matched?.fideId || st.fideId;
-        const playerCbxId = matched?.cbxId || st.cbxId;
+        let maleRank = 0;
+        let femaleRank = 0;
 
-        const placement: PlayerPodiumPlacement = {
-          tournamentId: tourn.id,
-          tournamentName: tourn.name,
-          startDate: tourn.startDate,
-          endDate: tourn.endDate,
-          city: tourn.city,
-          state: tourn.state,
-          type: tourn.type,
-          timeControl: tourn.timeControl,
-          rank: st.rank,
-          points: st.points,
-          buchholz: st.buchholz,
-          sonnebornBerger: st.sonnebornBerger,
-          wins: st.wins,
-        };
+        sortedStandings.forEach((st) => {
+          const matched = findMatchingPlayer(st, players);
+          const gender = matched?.gender === 'F' ? 'F' : 'M';
 
-        if (!podiumMap.has(playerId)) {
-          podiumMap.set(playerId, {
-            id: playerId,
-            name: playerName,
-            title: playerTitle,
-            gender: playerGender,
-            state: playerState,
-            fideId: playerFideId,
-            cbxId: playerCbxId,
-            totalPodiums: 0,
-            goldCount: 0,
-            silverCount: 0,
-            bronzeCount: 0,
-            placements: [],
-          });
-        }
+          let rankInGender = 0;
+          if (st.genderRank !== undefined && st.genderRank > 0) {
+            rankInGender = st.genderRank;
+          } else if (gender === 'F') {
+            femaleRank++;
+            rankInGender = femaleRank;
+          } else {
+            maleRank++;
+            rankInGender = maleRank;
+          }
 
-        const entry = podiumMap.get(playerId)!;
-        entry.placements.push(placement);
-        entry.totalPodiums += 1;
-        if (st.rank === 1) entry.goldCount += 1;
-        else if (st.rank === 2) entry.silverCount += 1;
-        else if (st.rank === 3) entry.bronzeCount += 1;
-      });
+          // Only top 3 in the gender count as podium
+          if (rankInGender > 3) return;
+
+          const playerId = matched?.id || st.playerId || st.fideId || st.playerName.trim().toLowerCase();
+          const playerName = matched?.name || st.playerName;
+          const playerTitle = matched?.title || st.title;
+          const playerGender = gender;
+          const playerState = matched?.state;
+          const playerFideId = matched?.fideId || st.fideId;
+          const playerCbxId = matched?.cbxId || st.cbxId;
+
+          const placement: PlayerPodiumPlacement = {
+            tournamentId: tourn.id,
+            tournamentName: tourn.name,
+            startDate: tourn.startDate,
+            endDate: tourn.endDate,
+            city: tourn.city,
+            state: tourn.state,
+            type: tourn.type,
+            timeControl: tourn.timeControl,
+            rank: rankInGender,
+            overallRank: st.rank,
+            genderCategory: gender,
+            points: st.points,
+            buchholz: st.buchholz,
+            sonnebornBerger: st.sonnebornBerger,
+            wins: st.wins,
+          };
+
+          if (!podiumMap.has(playerId)) {
+            podiumMap.set(playerId, {
+              id: playerId,
+              name: playerName,
+              title: playerTitle,
+              gender: playerGender,
+              state: playerState,
+              fideId: playerFideId,
+              cbxId: playerCbxId,
+              totalPodiums: 0,
+              goldCount: 0,
+              silverCount: 0,
+              bronzeCount: 0,
+              placements: [],
+            });
+          }
+
+          const entry = podiumMap.get(playerId)!;
+          entry.placements.push(placement);
+          entry.totalPodiums += 1;
+          if (rankInGender === 1) entry.goldCount += 1;
+          else if (rankInGender === 2) entry.silverCount += 1;
+          else if (rankInGender === 3) entry.bronzeCount += 1;
+        });
+      } else {
+        tourn.standings.forEach((st) => {
+          // Only top 3 (1º, 2º, 3º lugar) count as podium
+          if (!st.rank || st.rank < 1 || st.rank > 3) return;
+
+          // Try matching with player in players list using robust helper
+          const matched = findMatchingPlayer(st, players);
+
+          const playerId = matched?.id || st.playerId || st.fideId || st.playerName.trim().toLowerCase();
+          const playerName = matched?.name || st.playerName;
+          const playerTitle = matched?.title || st.title;
+          const playerGender = matched?.gender;
+          const playerState = matched?.state;
+          const playerFideId = matched?.fideId || st.fideId;
+          const playerCbxId = matched?.cbxId || st.cbxId;
+
+          const placement: PlayerPodiumPlacement = {
+            tournamentId: tourn.id,
+            tournamentName: tourn.name,
+            startDate: tourn.startDate,
+            endDate: tourn.endDate,
+            city: tourn.city,
+            state: tourn.state,
+            type: tourn.type,
+            timeControl: tourn.timeControl,
+            rank: st.rank,
+            overallRank: st.rank,
+            genderCategory: 'absolute',
+            points: st.points,
+            buchholz: st.buchholz,
+            sonnebornBerger: st.sonnebornBerger,
+            wins: st.wins,
+          };
+
+          if (!podiumMap.has(playerId)) {
+            podiumMap.set(playerId, {
+              id: playerId,
+              name: playerName,
+              title: playerTitle,
+              gender: playerGender,
+              state: playerState,
+              fideId: playerFideId,
+              cbxId: playerCbxId,
+              totalPodiums: 0,
+              goldCount: 0,
+              silverCount: 0,
+              bronzeCount: 0,
+              placements: [],
+            });
+          }
+
+          const entry = podiumMap.get(playerId)!;
+          entry.placements.push(placement);
+          entry.totalPodiums += 1;
+          if (st.rank === 1) entry.goldCount += 1;
+          else if (st.rank === 2) entry.silverCount += 1;
+          else if (st.rank === 3) entry.bronzeCount += 1;
+        });
+      }
     });
 
     return Array.from(podiumMap.values()).sort((a, b) => {
@@ -166,10 +253,19 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
     });
   }, [tournaments, players]);
 
-  // Top 3 players in Hall of Fame
+  // Filtered Hall of Fame by Naipe (Geral, Masculino, Feminino)
+  const filteredHallOfFame = useMemo(() => {
+    if (hallOfFameNaipeFilter === 'all') return hallOfFamePlayers;
+    return hallOfFamePlayers.filter((p) => {
+      if (hallOfFameNaipeFilter === 'F') return p.gender === 'F';
+      return p.gender !== 'F';
+    });
+  }, [hallOfFamePlayers, hallOfFameNaipeFilter]);
+
+  // Top 3 players in Hall of Fame (for selected Naipe filter)
   const top3HallOfFame = useMemo(() => {
-    return hallOfFamePlayers.slice(0, 3);
-  }, [hallOfFamePlayers]);
+    return filteredHallOfFame.slice(0, 3);
+  }, [filteredHallOfFame]);
 
   // All players matching the active spotlight filters (System, Modality, Category, Rating > 0), sorted by rating desc
   const allSpotlightMatchingPlayers = useMemo(() => {
@@ -853,12 +949,42 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
             </div>
           </div>
 
-          {top3HallOfFame.length > 0 && (
-            <div className="text-xs text-stone-700 font-mono flex items-center gap-1.5 self-start sm:self-auto px-2 py-1 bg-stone-50 rounded-lg border border-stone-200/80">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Top 3 </span>
-            </div>
-          )}
+          {/* Naipe Selector for Hall of Fame */}
+          <div className="flex items-center gap-1 self-start sm:self-auto bg-stone-100 p-1 rounded-xl border border-stone-200 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setHallOfFameNaipeFilter('all')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                hallOfFameNaipeFilter === 'all'
+                  ? 'bg-stone-900 text-white shadow-2xs'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              Geral
+            </button>
+            <button
+              type="button"
+              onClick={() => setHallOfFameNaipeFilter('M')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                hallOfFameNaipeFilter === 'M'
+                  ? 'bg-sky-600 text-white shadow-2xs'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              <span>Masculino</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setHallOfFameNaipeFilter('F')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                hallOfFameNaipeFilter === 'F'
+                  ? 'bg-pink-600 text-white shadow-2xs'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              <span>Feminino</span>
+            </button>
+          </div>
         </div>
 
         {top3HallOfFame.length > 0 ? (

@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 import { parseFideTableData, generateRealisticHistory, sortHistoryChronological } from '../utils/fideParser';
 import { tournamentService } from '../lib/services/tournamentService';
+import { playerService } from '../lib/services/playerService';
+import { findMatchingPlayer } from '../lib/playerMatching';
 
 interface PlayerProfileModalProps {
   player: Player | null;
@@ -35,6 +37,7 @@ interface PlayerProfileModalProps {
   onClose: () => void;
   onUpdatePlayerHistory?: (playerId: string, cbxHistory: RatingHistoryEntry[], fideHistory: RatingHistoryEntry[]) => void;
   tournaments?: Tournament[];
+  allPlayers?: Player[];
 }
 
 type EvolutionSource = 'fide' | 'cbx' | null;
@@ -45,7 +48,8 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   isOpen,
   onClose,
   onUpdatePlayerHistory,
-  tournaments
+  tournaments,
+  allPlayers
 }) => {
   // Selected evolution system: null initially (only loaded when user explicitly clicks EVOLUÇÃO FIDE or EVOLUÇÃO CBX)
   const [selectedSource, setSelectedSource] = useState<EvolutionSource>(null);
@@ -135,6 +139,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
 
   // Fallback to load tournaments directly from Firebase if prop not passed
   const [firestoreTournaments, setFirestoreTournaments] = useState<Tournament[]>(tournaments || []);
+  const [firestorePlayers, setFirestorePlayers] = useState<Player[]>(allPlayers || []);
 
   useEffect(() => {
     if (tournaments && tournaments.length > 0) {
@@ -148,11 +153,24 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
     }
   }, [tournaments]);
 
+  useEffect(() => {
+    if (allPlayers && allPlayers.length > 0) {
+      setFirestorePlayers(allPlayers);
+    } else {
+      playerService.getPlayers().then(ps => {
+        if (ps) setFirestorePlayers(ps);
+      }).catch(err => {
+        console.warn('Erro ao carregar enxadristas do Firebase:', err);
+      });
+    }
+  }, [allPlayers]);
+
   // Extract and format last 3 placements in tournaments with status 'Finalizado'
   // STRICTLY from Firebase - never from mock or sample files!
   const recentPlacements = useMemo(() => {
     if (!player) return [];
     const sourceList = (tournaments && tournaments.length > 0) ? tournaments : firestoreTournaments;
+    const playersList = (allPlayers && allPlayers.length > 0) ? allPlayers : firestorePlayers;
 
     // Filter strictly ONLY tournaments from Firebase with status === 'Finalizado' (case-insensitive)
     const finished = sourceList.filter(t => t.status && t.status.trim().toLowerCase() === 'finalizado');
@@ -160,6 +178,9 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
     const list: Array<{
       tournament: Tournament;
       standing: TournamentStanding;
+      effectiveRank: number;
+      isGenderSeparated: boolean;
+      playerGender: 'M' | 'F';
       date: string;
     }> = [];
 
@@ -167,6 +188,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
     const pFide = player.fideId ? String(player.fideId).trim() : '';
     const pCbx = player.cbxId ? String(player.cbxId).trim() : '';
     const pId = player.id ? String(player.id).trim() : '';
+    const targetGender: 'M' | 'F' = player.gender === 'F' ? 'F' : 'M';
 
     for (const t of finished) {
       if (!t.standings || t.standings.length === 0) continue;
@@ -180,9 +202,48 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
       });
 
       if (standing) {
+        const isGenderSeparated = t.rankingType === 'gender_separated' || t.genderSeparated === true;
+        let effectiveRank = standing.rank;
+
+        if (isGenderSeparated) {
+          if (standing.genderRank !== undefined && standing.genderRank > 0) {
+            effectiveRank = standing.genderRank;
+          } else {
+            // Sort standings first to ensure deterministic calculation by points/rank
+            const sortedStandings = [...t.standings].sort((a, b) => {
+              const rA = a.rank !== undefined ? a.rank : 999;
+              const rB = b.rank !== undefined ? b.rank : 999;
+              if (rA !== rB) return rA - rB;
+              return (b.points || 0) - (a.points || 0);
+            });
+
+            let countInGender = 0;
+            for (const st of sortedStandings) {
+              const matched = findMatchingPlayer(st, playersList);
+              const stGender = matched?.gender === 'F' ? 'F' : 'M';
+              if (stGender === targetGender) {
+                countInGender++;
+                if (
+                  st === standing ||
+                  (pId && st.playerId && String(st.playerId).trim() === pId) ||
+                  (pFide && st.fideId && String(st.fideId).trim() === pFide) ||
+                  (pCbx && st.cbxId && String(st.cbxId).trim() === pCbx) ||
+                  (st.playerName && pName && st.playerName.trim().toLowerCase() === pName)
+                ) {
+                  effectiveRank = countInGender;
+                  break;
+                }
+              }
+            }
+          }
+        }
+
         list.push({
           tournament: t,
           standing,
+          effectiveRank,
+          isGenderSeparated,
+          playerGender: targetGender,
           date: t.endDate || t.startDate || '',
         });
       }
@@ -193,7 +254,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
 
     // Return the last 3 placements
     return list.slice(0, 3);
-  }, [player, tournaments, firestoreTournaments]);
+  }, [player, tournaments, firestoreTournaments, allPlayers, firestorePlayers]);
 
   // Get active history list based on selected source (FIDE vs CBX)
   // Strictly uses real history data from official sources (no fabricated or simulated data)
@@ -767,10 +828,12 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
               <div className="p-4 sm:p-5 bg-gradient-to-b from-stone-50/40 to-white">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                   {recentPlacements.map((item, idx) => {
-                    const rank = item.standing.rank;
+                    const rank = item.effectiveRank !== undefined ? item.effectiveRank : item.standing.rank;
                     const isFirst = rank === 1;
                     const isSecond = rank === 2;
                     const isThird = rank === 3;
+                    const isFemale = item.playerGender === 'F';
+                    const isSeparated = item.isGenderSeparated;
 
                     // Modality configuration
                     const modType = item.tournament.type || 'standard';
@@ -810,31 +873,50 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                       >
                         {/* Top: Placement & Modality Badges */}
                         <div>
-                          <div className="flex items-center justify-between gap-2 mb-2.5">
+                          <div className="flex items-center justify-between gap-2 mb-2.5 flex-wrap">
                             {/* Placement Badge */}
-                            {isFirst ? (
-                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-xs shadow-2xs">
-                                <Trophy className="w-3.5 h-3.5" />
-                                <span>1º Lugar</span>
-                                <span className="text-[10px] font-bold opacity-90">• Campeão</span>
-                              </div>
-                            ) : isSecond ? (
-                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-slate-500 to-slate-600 text-white font-black text-xs shadow-2xs">
-                                <Medal className="w-3.5 h-3.5" />
-                                <span>2º Lugar</span>
-                                <span className="text-[10px] font-bold opacity-90">• Vice</span>
-                              </div>
-                            ) : isThird ? (
-                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-800 to-amber-900 text-white font-black text-xs shadow-2xs">
-                                <Award className="w-3.5 h-3.5" />
-                                <span>3º Lugar</span>
-                                <span className="text-[10px] font-bold opacity-90">• Bronze</span>
-                              </div>
-                            ) : (
-                              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-100 text-stone-800 font-extrabold text-xs border border-stone-200">
-                                <span>{rank}º Lugar</span>
-                              </div>
-                            )}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {isFirst ? (
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-xs shadow-2xs">
+                                  <Trophy className="w-3.5 h-3.5" />
+                                  <span>1º Lugar</span>
+                                  <span className="text-[10px] font-bold opacity-90">
+                                    {isSeparated ? (isFemale ? '• 1ª Feminino' : '• 1º Masculino') : (isFemale ? '• Campeã' : '• Campeão')}
+                                  </span>
+                                </div>
+                              ) : isSecond ? (
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-slate-500 to-slate-600 text-white font-black text-xs shadow-2xs">
+                                  <Medal className="w-3.5 h-3.5" />
+                                  <span>2º Lugar</span>
+                                  <span className="text-[10px] font-bold opacity-90">
+                                    {isSeparated ? (isFemale ? '• 2ª Feminino' : '• 2º Masculino') : '• Vice'}
+                                  </span>
+                                </div>
+                              ) : isThird ? (
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-800 to-amber-900 text-white font-black text-xs shadow-2xs">
+                                  <Award className="w-3.5 h-3.5" />
+                                  <span>3º Lugar</span>
+                                  <span className="text-[10px] font-bold opacity-90">
+                                    {isSeparated ? (isFemale ? '• 3ª Feminino' : '• 3º Masculino') : '• Bronze'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-100 text-stone-800 font-extrabold text-xs border border-stone-200">
+                                  <span>{rank}º Lugar</span>
+                                  {isSeparated && (
+                                    <span className="text-[10px] text-stone-600 font-bold">
+                                      ({isFemale ? 'Feminino' : 'Masculino'})
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                              {isSeparated && item.standing.rank !== rank && (
+                                <span className="text-[10px] font-mono text-stone-500 font-semibold" title="Colocação geral no torneio">
+                                  ({item.standing.rank}º geral)
+                                </span>
+                              )}
+                            </div>
 
                             {/* Modality Pill */}
                             <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${modalityConfig.bg}`}>

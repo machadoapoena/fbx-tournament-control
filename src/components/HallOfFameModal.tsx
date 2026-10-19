@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import { HallOfFamePlayer, Tournament } from '../types/chess';
 import { 
   X, 
@@ -9,8 +9,7 @@ import {
   Clock, 
   Award,
   Crown,
-  Sparkles,
-  TrendingUp
+  Sparkles
 } from 'lucide-react';
 
 interface HallOfFameModalProps {
@@ -24,7 +23,6 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({
   isOpen,
   onClose,
   player,
-  tournaments,
 }) => {
   // Close on ESC
   useEffect(() => {
@@ -57,134 +55,6 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({
       return dateStr;
     }
   };
-
-  const formatShortDate = (dateStr: string) => {
-    if (!dateStr) return '';
-    const parts = dateStr.split('-');
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}`;
-    }
-    return dateStr;
-  };
-
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-
-  // Compute all tournament participations for this player
-  const timelineData = useMemo(() => {
-    if (!player) return [];
-
-    interface TournamentHistoryItem {
-      tournamentName: string;
-      startDate: string;
-      rank: number;
-      points?: number;
-      type?: string;
-      timeControl?: string;
-      city?: string;
-      state?: string;
-    }
-
-    const map = new Map<string, TournamentHistoryItem>();
-
-    // 1. Gather from all tournaments where standings are available
-    if (tournaments && tournaments.length > 0) {
-      tournaments.forEach(t => {
-        if (!t.standings || t.standings.length === 0) return;
-        const st = t.standings.find(s => {
-          if (s.playerId && s.playerId === player.id) return true;
-          if (s.fideId && player.fideId && s.fideId === player.fideId) return true;
-          if (s.cbxId && player.cbxId && s.cbxId === player.cbxId) return true;
-          if (s.playerName && player.name && s.playerName.trim().toLowerCase() === player.name.trim().toLowerCase()) return true;
-          return false;
-        });
-
-        if (st && st.rank !== undefined) {
-          const key = `${t.id || t.name}-${t.startDate}`;
-          map.set(key, {
-            tournamentName: t.name,
-            startDate: t.startDate,
-            rank: st.rank,
-            points: st.points,
-            type: t.type,
-            timeControl: t.timeControl,
-            city: t.city,
-            state: t.state,
-          });
-        }
-      });
-    }
-
-    // 2. Also ensure all entries from player.placements are included
-    (player.placements || []).forEach(plc => {
-      const key = `${plc.tournamentId || plc.tournamentName}-${plc.startDate}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          tournamentName: plc.tournamentName,
-          startDate: plc.startDate,
-          rank: plc.rank,
-          points: plc.points,
-          type: plc.type,
-          timeControl: plc.timeControl,
-          city: plc.city,
-          state: plc.state,
-        });
-      }
-    });
-
-    // Sort chronologically ascending (oldest to newest)
-    return Array.from(map.values()).sort(
-      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
-    );
-  }, [player, tournaments]);
-
-  const getRankColor = (rank: number) => {
-    if (rank === 1) return { fill: '#f59e0b', stroke: '#d97706', bg: 'bg-amber-100 text-amber-950 border-amber-300', label: '1º Lugar' };
-    if (rank === 2) return { fill: '#94a3b8', stroke: '#64748b', bg: 'bg-slate-100 text-slate-900 border-slate-300', label: '2º Lugar' };
-    if (rank === 3) return { fill: '#b45309', stroke: '#92400e', bg: 'bg-amber-50 text-amber-900 border-amber-500', label: '3º Lugar' };
-    return { fill: '#78716c', stroke: '#57534e', bg: 'bg-stone-100 text-stone-800 border-stone-300', label: `${rank}º Lugar` };
-  };
-
-  // Chart Geometry
-  const chartWidth = 880;
-  const chartHeight = 160;
-  const padX = 54;
-  const padTop = 32;
-  const padBottom = 30;
-  const innerWidth = chartWidth - padX * 2;
-  const innerHeight = chartHeight - padTop - padBottom;
-
-  const minRank = 1;
-  const maxRank = Math.max(3, ...timelineData.map(d => d.rank));
-
-  const yTicks = useMemo(() => {
-    if (timelineData.length === 0) return [1, 2, 3];
-    const unique = new Set([1, 2, 3]);
-    if (maxRank > 3) unique.add(maxRank);
-    return Array.from(unique).sort((a, b) => a - b);
-  }, [timelineData, maxRank]);
-
-  const getY = (rank: number) => {
-    const range = Math.max(1, maxRank - minRank);
-    return padTop + ((rank - minRank) / range) * innerHeight;
-  };
-
-  const getX = (idx: number) => {
-    if (timelineData.length <= 1) return padX + innerWidth / 2;
-    return padX + (idx / (timelineData.length - 1)) * innerWidth;
-  };
-
-  const linePath = useMemo(() => {
-    if (timelineData.length < 2) return '';
-    return timelineData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d.rank)}`).join(' ');
-  }, [timelineData, maxRank]);
-
-  const areaPath = useMemo(() => {
-    if (timelineData.length < 2) return '';
-    const lastX = getX(timelineData.length - 1);
-    const firstX = getX(0);
-    const bottomY = chartHeight - padBottom;
-    return `${linePath} L ${lastX} ${bottomY} L ${firstX} ${bottomY} Z`;
-  }, [linePath, timelineData]);
 
   return (
     <div 
@@ -272,222 +142,8 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({
           </div>
         </div>
 
-        {/* Content: List of podium placements & Timeline Chart */}
+        {/* Content: List of podium placements */}
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4 bg-stone-50/50">
-          {/* Gráfico Minimalista de Colocações nos Torneios */}
-          {timelineData.length > 0 && (
-            <div className="bg-white rounded-2xl border border-stone-200 p-4 shadow-2xs">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 pb-2.5 border-b border-stone-100">
-                <div className="flex items-center gap-1.5">
-                  <TrendingUp className="w-4 h-4 text-amber-500" />
-                  <h4 className="text-xs font-bold text-stone-900 uppercase tracking-wider font-mono">
-                    Histórico de Colocações
-                  </h4>
-                  <span className="text-[11px] text-stone-400 font-mono">
-                    ({timelineData.length} {timelineData.length === 1 ? 'torneio' : 'torneios'})
-                  </span>
-                </div>
-
-                <div className="text-xs font-mono">
-                  {hoveredIdx !== null && timelineData[hoveredIdx] ? (
-                    <div className="flex items-center gap-2 animate-in fade-in duration-150">
-                      <span className="font-semibold text-stone-800 max-w-[200px] sm:max-w-xs truncate" title={timelineData[hoveredIdx].tournamentName}>
-                        {timelineData[hoveredIdx].tournamentName}
-                      </span>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border ${getRankColor(timelineData[hoveredIdx].rank).bg}`}>
-                        {getRankColor(timelineData[hoveredIdx].rank).label}
-                      </span>
-                      <span className="text-stone-500 text-[11px]">
-                        {formatDate(timelineData[hoveredIdx].startDate)}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-stone-400 text-[11px]">
-                      Topo = 1º lugar • Passe nas bolinhas para detalhes
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Responsive SVG Chart */}
-              <div className="relative w-full overflow-hidden">
-                <svg
-                  viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-                  className="w-full h-auto select-none overflow-visible"
-                >
-                  <defs>
-                    <linearGradient id="hofRankGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.12" />
-                      <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
-                    </linearGradient>
-                  </defs>
-
-                  {/* Horizontal grid lines for ranks */}
-                  {yTicks.map((tick) => {
-                    const y = getY(tick);
-                    return (
-                      <g key={`ytick-${tick}`}>
-                        <line
-                          x1={padX}
-                          y1={y}
-                          x2={chartWidth - padX}
-                          y2={y}
-                          stroke="#f0eeee"
-                          strokeDasharray="4 4"
-                          strokeWidth="1"
-                        />
-                        <text
-                          x={padX - 8}
-                          y={y + 3.5}
-                          textAnchor="end"
-                          className="text-[10px] font-mono fill-stone-400 font-bold"
-                        >
-                          {tick}º
-                        </text>
-                      </g>
-                    );
-                  })}
-
-                  {/* Subtle area gradient fill */}
-                  {areaPath && <path d={areaPath} fill="url(#hofRankGrad)" />}
-
-                  {/* Line connection */}
-                  {linePath && (
-                    <path
-                      d={linePath}
-                      fill="none"
-                      stroke="#d6d3d1"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  )}
-
-                  {/* Bolinhas (dots) */}
-                  {timelineData.map((pt, idx) => {
-                    const x = getX(idx);
-                    const y = getY(pt.rank);
-                    const isHovered = hoveredIdx === idx;
-                    const rankInfo = getRankColor(pt.rank);
-
-                    return (
-                      <g
-                        key={`pt-${pt.tournamentName}-${idx}`}
-                        className="cursor-pointer"
-                        onMouseEnter={() => setHoveredIdx(idx)}
-                        onMouseLeave={() => setHoveredIdx(null)}
-                        onClick={() => setHoveredIdx(hoveredIdx === idx ? null : idx)}
-                      >
-                        {/* Guideline on hover */}
-                        {isHovered && (
-                          <line
-                            x1={x}
-                            y1={padTop}
-                            x2={x}
-                            y2={chartHeight - padBottom}
-                            stroke="#f59e0b"
-                            strokeWidth="1.5"
-                            strokeDasharray="3 3"
-                            strokeOpacity="0.7"
-                          />
-                        )}
-
-                        {/* Large transparent hit area */}
-                        <circle cx={x} cy={y} r="18" fill="transparent" />
-
-                        {/* Outer hover halo */}
-                        {isHovered && (
-                          <circle
-                            cx={x}
-                            cy={y}
-                            r="13"
-                            fill={rankInfo.fill}
-                            fillOpacity="0.25"
-                          />
-                        )}
-
-                        {/* Dot circle */}
-                        <circle
-                          cx={x}
-                          cy={y}
-                          r={isHovered ? 8 : 6}
-                          fill={rankInfo.fill}
-                          stroke="#ffffff"
-                          strokeWidth="2.5"
-                          className="transition-all duration-150 shadow-xs"
-                        />
-
-                        {/* Rank placement label above dot */}
-                        <text
-                          x={x}
-                          y={y - 9}
-                          textAnchor="middle"
-                          className={`text-[9.5px] font-mono transition-colors select-none ${
-                            isHovered ? 'fill-stone-950 font-black' : 'fill-stone-600 font-bold'
-                          }`}
-                        >
-                          {pt.rank}º
-                        </text>
-
-                        {/* X-axis date underneath */}
-                        <text
-                          x={x}
-                          y={chartHeight - 10}
-                          textAnchor="middle"
-                          className={`text-[9px] font-mono transition-colors select-none ${
-                            isHovered ? 'fill-stone-900 font-bold' : 'fill-stone-400 font-medium'
-                          }`}
-                        >
-                          {formatShortDate(pt.startDate)}
-                        </text>
-
-                        {/* Floating Tooltip in SVG right above the hovered dot */}
-                        {isHovered && (
-                          <g
-                            transform={`translate(${Math.max(130, Math.min(chartWidth - 130, x))}, ${Math.max(40, y - 18)})`}
-                            pointerEvents="none"
-                          >
-                            <rect
-                              x="-125"
-                              y="-36"
-                              width="250"
-                              height="34"
-                              rx="7"
-                              fill="#1c1917"
-                              stroke="#44403c"
-                              strokeWidth="0.8"
-                              className="shadow-xl"
-                            />
-                            <text
-                              textAnchor="middle"
-                              y="-21"
-                              fill="#ffffff"
-                              fontSize="10"
-                              fontWeight="bold"
-                              fontFamily="sans-serif"
-                            >
-                              {pt.tournamentName.length > 30 ? pt.tournamentName.slice(0, 28) + '...' : pt.tournamentName}
-                            </text>
-                            <text
-                              textAnchor="middle"
-                              y="-8"
-                              fill="#fbbf24"
-                              fontSize="9.5"
-                              fontWeight="600"
-                              fontFamily="monospace"
-                            >
-                              {rankInfo.label} • {formatDate(pt.startDate)}{pt.points !== undefined ? ` • ${pt.points} pts` : ''}
-                            </text>
-                          </g>
-                        )}
-                      </g>
-                    );
-                  })}
-                </svg>
-              </div>
-            </div>
-          )}
-
           <div className="flex items-center justify-between text-xs text-stone-700 font-semibold mb-1 px-1">
             <span>Torneios com Colocação no Pódio (Top 3)</span>
             <span className="font-mono text-stone-700">{sortedPlacements.length} {sortedPlacements.length === 1 ? 'registro' : 'registros'}</span>
@@ -522,7 +178,7 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                       {/* Placement Badge */}
-                      <div className="mb-2">
+                      <div className="mb-2 flex items-center gap-2 flex-wrap">
                         {isGold ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400 text-stone-950 font-black text-xs shadow-2xs border border-amber-500 font-mono">
                             <span>🥇</span>
@@ -541,6 +197,26 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-800 text-white font-bold text-xs font-mono">
                             <span>Top 3</span>
+                          </span>
+                        )}
+
+                        {plc.genderCategory === 'F' ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-pink-100 text-pink-800 border border-pink-200">
+                            Naipe Feminino
+                          </span>
+                        ) : plc.genderCategory === 'M' ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-sky-100 text-sky-800 border border-sky-200">
+                            Naipe Masculino
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-stone-100 text-stone-700 border border-stone-200">
+                            Absoluto
+                          </span>
+                        )}
+
+                        {plc.overallRank && plc.overallRank !== plc.rank && (
+                          <span className="text-[11px] text-stone-500 font-mono font-medium">
+                            ({plc.overallRank}º geral)
                           </span>
                         )}
                       </div>

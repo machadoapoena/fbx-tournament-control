@@ -69,6 +69,7 @@ export interface TournamentStanding {
   cbxId?: string;
   points: number;
   rank: number;
+  genderRank?: number;
   buchholz?: number;
   sonnebornBerger?: number;
   wins?: number;
@@ -86,6 +87,8 @@ export interface PlayerPodiumPlacement {
   type?: TournamentCategory;
   timeControl?: string;
   rank: number; // 1, 2, or 3
+  overallRank?: number; // Colocação geral no torneio
+  genderCategory?: 'M' | 'F' | 'absolute'; // Naipe da premiação (Masculino, Feminino ou Absoluto)
   points: number;
   buchholz?: number;
   sonnebornBerger?: number;
@@ -109,6 +112,8 @@ export interface HallOfFamePlayer {
 
 export type TournamentCategory = 'blitz' | 'rapid' | 'standard';
 
+export type TournamentRankingType = 'absolute' | 'gender_separated';
+
 export interface Tournament {
   id?: string;
   name: string;
@@ -121,6 +126,8 @@ export interface Tournament {
   type?: TournamentCategory;
   ratedFide?: boolean;
   ratedCbx?: boolean;
+  rankingType?: TournamentRankingType; // 'absolute' (padrão) ou 'gender_separated' (separado por naipe)
+  genderSeparated?: boolean;
   status: 'Planejado' | 'Em Andamento' | 'Finalizado';
   arbiters?: string;
   organizer?: string;
