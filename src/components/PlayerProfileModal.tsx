@@ -16,6 +16,8 @@ import {
   Info, 
   ChevronDown, 
   ChevronUp, 
+  ChevronLeft,
+  ChevronRight,
   Activity,
   Layers,
   HelpCircle,
@@ -79,6 +81,9 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   const [localCbxHistory, setLocalCbxHistory] = useState<RatingHistoryEntry[]>(player?.cbxHistory || []);
   const [localFideHistory, setLocalFideHistory] = useState<RatingHistoryEntry[]>(player?.fideHistory || []);
 
+  // Paginação sob demanda de colocações em torneios finalizados (2 por vez)
+  const [placementsIndex, setPlacementsIndex] = useState(0);
+
   // Compute a stable unique identity key for the player
   const playerIdentityKey = player
     ? (player.id || `${player.name}_${player.fideId || player.cbxId || ''}`)
@@ -102,6 +107,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
         setHistorySourceStatus(null);
         setShowTableDetails(false);
         setHoveredPoint(null);
+        setPlacementsIndex(0);
       }
 
       // Sync local histories with updated player prop without clearing user's selected source
@@ -125,6 +131,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
       setHistorySourceStatus(null);
       setShowTableDetails(false);
       setHoveredPoint(null);
+      setPlacementsIndex(0);
     }
   }, [isOpen, playerIdentityKey, player?.cbxHistory, player?.fideHistory]);
 
@@ -249,12 +256,38 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
       }
     }
 
-    // Sort by date descending (most recent first)
-    list.sort((a, b) => b.date.localeCompare(a.date));
+    // Ordem cronológica da data do torneio: torneios mais recentes primeiro
+    list.sort((a, b) => {
+      const dateA = a.date || a.tournament.startDate || a.tournament.endDate || '';
+      const dateB = b.date || b.tournament.startDate || b.tournament.endDate || '';
+      const timeA = dateA ? new Date(dateA).getTime() : 0;
+      const timeB = dateB ? new Date(dateB).getTime() : 0;
+      if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
+        return timeB - timeA;
+      }
+      return dateB.localeCompare(dateA);
+    });
 
-    // Return the last 3 placements
-    return list.slice(0, 3);
+    // Retorna a lista completa para paginação sob demanda (apresenta 2 por vez)
+    return list;
   }, [player, tournaments, firestoreTournaments, allPlayers, firestorePlayers]);
+
+  // Carrega sob demanda apenas 2 colocações por vez (não renderiza todas de uma vez)
+  const visiblePlacements = useMemo(() => {
+    return recentPlacements.slice(placementsIndex, placementsIndex + 2);
+  }, [recentPlacements, placementsIndex]);
+
+  const totalPlacements = recentPlacements.length;
+  const canGoPrev = placementsIndex > 0;
+  const canGoNext = placementsIndex + 2 < totalPlacements;
+
+  const handlePrevPlacements = () => {
+    setPlacementsIndex(prev => Math.max(0, prev - 2));
+  };
+
+  const handleNextPlacements = () => {
+    setPlacementsIndex(prev => (prev + 2 < totalPlacements ? prev + 2 : prev));
+  };
 
   // Get active history list based on selected source (FIDE vs CBX)
   // Strictly uses real history data from official sources (no fabricated or simulated data)
@@ -797,7 +830,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
         {/* Modal Scrollable Body */}
         <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
 
-          {/* Seção: Últimas 3 Colocações em Torneios Finalizados */}
+          {/* Seção: Últimas Colocações em Torneios Finalizados */}
           <div className="bg-white rounded-2xl border border-stone-200/90 shadow-2xs overflow-hidden">
             <div className="px-5 py-3.5 bg-stone-50/80 border-b border-stone-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
@@ -812,172 +845,243 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                     </span>
                   </h3>
                   <p className="text-[11px] text-stone-500 mt-0.5">
-                    Resultados oficiais do enxadrista nas últimas 3 participações concluídas
+                    Resultados oficiais em ordem cronológica de data • Apresentando 2 por vez (navegue pelas setas)
                   </p>
                 </div>
               </div>
 
               {recentPlacements.length > 0 && (
-                <span className="text-[11px] font-bold text-stone-600 self-start sm:self-auto bg-stone-200/70 px-2 py-0.5 rounded-md">
-                  {recentPlacements.length} {recentPlacements.length === 1 ? 'torneio finalizado' : 'torneios finalizados'}
-                </span>
+                <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+                  <span className="text-[11px] font-bold text-stone-600 bg-stone-200/70 px-2.5 py-0.5 rounded-md font-mono">
+                    {recentPlacements.length} {recentPlacements.length === 1 ? 'torneio finalizado' : 'torneios finalizados'}
+                  </span>
+                  {recentPlacements.length > 2 && (
+                    <span className="text-[11px] font-bold text-amber-800 bg-amber-100/90 border border-amber-300/80 px-2 py-0.5 rounded-md font-mono">
+                      {placementsIndex + 1}–{Math.min(placementsIndex + 2, recentPlacements.length)} de {recentPlacements.length}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
 
             {recentPlacements.length > 0 ? (
               <div className="p-4 sm:p-5 bg-gradient-to-b from-stone-50/40 to-white">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                  {recentPlacements.map((item, idx) => {
-                    const rank = item.effectiveRank !== undefined ? item.effectiveRank : item.standing.rank;
-                    const isFirst = rank === 1;
-                    const isSecond = rank === 2;
-                    const isThird = rank === 3;
-                    const isFemale = item.playerGender === 'F';
-                    const isSeparated = item.isGenderSeparated;
+                <div className="flex items-center gap-2 sm:gap-3.5 w-full">
+                  {/* Seta Esquerda: Colocações mais recentes */}
+                  <button
+                    type="button"
+                    onClick={handlePrevPlacements}
+                    disabled={!canGoPrev}
+                    className={`p-2.5 sm:p-3 rounded-2xl border transition-all shrink-0 flex items-center justify-center cursor-pointer shadow-xs ${
+                      !canGoPrev
+                        ? 'opacity-25 cursor-not-allowed bg-stone-100 text-stone-400 border-stone-200'
+                        : 'bg-white hover:bg-stone-50 text-stone-700 hover:text-amber-600 border-stone-300 hover:border-amber-400 hover:shadow-md active:scale-95'
+                    }`}
+                    title="Ver colocações mais recentes"
+                    aria-label="Ver colocações anteriores"
+                  >
+                    <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 pointer-events-none" />
+                  </button>
 
-                    // Modality configuration
-                    const modType = item.tournament.type || 'standard';
-                    const modalityConfig = {
-                      standard: { label: 'Clássico', bg: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-                      rapid: { label: 'Rápido', bg: 'bg-sky-50 text-sky-800 border-sky-200' },
-                      blitz: { label: 'Blitz', bg: 'bg-amber-50 text-amber-800 border-amber-200' },
-                    }[modType] || { label: 'Clássico', bg: 'bg-stone-50 text-stone-800 border-stone-200' };
+                  {/* Grid de Cards: Exatamente 2 por vez, com comprimento aumentado */}
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4 min-w-0">
+                    {visiblePlacements.map((item, idx) => {
+                      const rank = item.effectiveRank !== undefined ? item.effectiveRank : item.standing.rank;
+                      const isFirst = rank === 1;
+                      const isSecond = rank === 2;
+                      const isThird = rank === 3;
+                      const isFemale = item.playerGender === 'F';
+                      const isSeparated = item.isGenderSeparated;
 
-                    // Date display format: e.g. "Set/2026"
-                    const dateFormatted = (() => {
-                      const d = item.date || item.tournament.startDate;
-                      if (!d) return '';
-                      try {
-                        const parts = d.split('-');
-                        if (parts.length >= 2) {
-                          const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-                          const mIdx = parseInt(parts[1], 10) - 1;
-                          return `${monthNames[mIdx] || parts[1]}/${parts[0]}`;
-                        }
-                      } catch {}
-                      return d;
-                    })();
+                      // Modality configuration
+                      const modType = item.tournament.type || 'standard';
+                      const modalityConfig = {
+                        standard: { label: 'Clássico', bg: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+                        rapid: { label: 'Rápido', bg: 'bg-sky-50 text-sky-800 border-sky-200' },
+                        blitz: { label: 'Blitz', bg: 'bg-amber-50 text-amber-800 border-amber-200' },
+                      }[modType] || { label: 'Clássico', bg: 'bg-stone-50 text-stone-800 border-stone-200' };
 
-                    return (
-                      <div
-                        key={item.tournament.id || `placement-${idx}-${item.tournament.name}`}
-                        className={`relative rounded-xl border p-4 transition-all flex flex-col justify-between ${
-                          isFirst
-                            ? 'bg-gradient-to-br from-amber-500/10 via-amber-50/70 to-yellow-500/5 border-amber-300 ring-2 ring-amber-400/20 shadow-xs'
-                            : isSecond
-                            ? 'bg-gradient-to-br from-slate-200/40 via-stone-50 to-slate-100/30 border-slate-300 ring-1 ring-slate-400/20 shadow-xs'
-                            : isThird
-                            ? 'bg-gradient-to-br from-amber-800/10 via-stone-50 to-orange-100/20 border-amber-700/30 ring-1 ring-amber-800/15 shadow-xs'
-                            : 'bg-white border-stone-200 hover:border-stone-300 shadow-2xs'
-                        }`}
-                      >
-                        {/* Top: Placement & Modality Badges */}
-                        <div>
-                          <div className="flex items-center justify-between gap-2 mb-2.5 flex-wrap">
-                            {/* Placement Badge */}
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {isFirst ? (
-                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-xs shadow-2xs">
-                                  <Trophy className="w-3.5 h-3.5" />
-                                  <span>1º Lugar</span>
-                                  <span className="text-[10px] font-bold opacity-90">
-                                    {isSeparated ? (isFemale ? '• 1ª Feminino' : '• 1º Masculino') : (isFemale ? '• Campeã' : '• Campeão')}
-                                  </span>
-                                </div>
-                              ) : isSecond ? (
-                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-slate-500 to-slate-600 text-white font-black text-xs shadow-2xs">
-                                  <Medal className="w-3.5 h-3.5" />
-                                  <span>2º Lugar</span>
-                                  <span className="text-[10px] font-bold opacity-90">
-                                    {isSeparated ? (isFemale ? '• 2ª Feminino' : '• 2º Masculino') : '• Vice'}
-                                  </span>
-                                </div>
-                              ) : isThird ? (
-                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-800 to-amber-900 text-white font-black text-xs shadow-2xs">
-                                  <Award className="w-3.5 h-3.5" />
-                                  <span>3º Lugar</span>
-                                  <span className="text-[10px] font-bold opacity-90">
-                                    {isSeparated ? (isFemale ? '• 3ª Feminino' : '• 3º Masculino') : '• Bronze'}
-                                  </span>
-                                </div>
-                              ) : (
-                                <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-100 text-stone-800 font-extrabold text-xs border border-stone-200">
-                                  <span>{rank}º Lugar</span>
-                                  {isSeparated && (
-                                    <span className="text-[10px] text-stone-600 font-bold">
-                                      ({isFemale ? 'Feminino' : 'Masculino'})
-                                    </span>
-                                  )}
-                                </div>
-                              )}
+                      // Date display format: e.g. "18/10/2026" or "Set/2026"
+                      const dateFormatted = (() => {
+                        const d = item.date || item.tournament.startDate;
+                        if (!d) return '';
+                        try {
+                          const parts = d.split('-');
+                          if (parts.length === 3) {
+                            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                          }
+                          if (parts.length === 2) {
+                            const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+                            const mIdx = parseInt(parts[1], 10) - 1;
+                            return `${monthNames[mIdx] || parts[1]}/${parts[0]}`;
+                          }
+                        } catch {}
+                        return d;
+                      })();
 
-                              {isSeparated && item.standing.rank !== rank && (
-                                <span className="text-[10px] font-mono text-stone-500 font-semibold" title="Colocação geral no torneio">
-                                  ({item.standing.rank}º geral)
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Modality Pill */}
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${modalityConfig.bg}`}>
-                              {modalityConfig.label}
-                            </span>
-                          </div>
-
-                          {/* Tournament Title */}
-                          <h4
-                            className="font-extrabold text-stone-900 text-sm leading-snug line-clamp-2 mt-1 mb-1.5"
-                            title={item.tournament.name}
-                          >
-                            {item.tournament.name}
-                          </h4>
-
-                          {/* Location & Date */}
-                          <div className="flex items-center flex-wrap gap-2 text-[11px] text-stone-500 font-medium">
-                            {(item.tournament.city || item.tournament.state) && (
-                              <span className="flex items-center gap-1">
-                                <MapPin className="w-3 h-3 text-stone-400" />
-                                <span>{[item.tournament.city, item.tournament.state].filter(Boolean).join(', ')}</span>
-                              </span>
-                            )}
-                            {dateFormatted && (
-                              <span className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3 text-stone-400" />
-                                <span>{dateFormatted}</span>
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Bottom: Pontuação & Metric Highlights */}
-                        <div className="mt-3.5 pt-2.5 border-t border-stone-200/70 flex items-center justify-between">
+                      return (
+                        <div
+                          key={item.tournament.id || `placement-${placementsIndex + idx}-${item.tournament.name}`}
+                          className={`relative rounded-2xl border p-4 sm:p-5 transition-all flex flex-col justify-between min-h-[175px] shadow-2xs ${
+                            isFirst
+                              ? 'bg-gradient-to-br from-amber-500/10 via-amber-50/70 to-yellow-500/5 border-amber-300 ring-2 ring-amber-400/20 shadow-xs'
+                              : isSecond
+                              ? 'bg-gradient-to-br from-slate-200/40 via-stone-50 to-slate-100/30 border-slate-300 ring-1 ring-slate-400/20 shadow-xs'
+                              : isThird
+                              ? 'bg-gradient-to-br from-amber-800/10 via-stone-50 to-orange-100/20 border-amber-700/30 ring-1 ring-amber-800/15 shadow-xs'
+                              : 'bg-white border-stone-200 hover:border-stone-300 shadow-2xs'
+                          }`}
+                        >
+                          {/* Top: Placement & Modality Badges */}
                           <div>
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
-                              Pontuação
+                            <div className="flex items-center justify-between gap-2 mb-2.5 flex-wrap">
+                              {/* Placement Badge */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {isFirst ? (
+                                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-xs shadow-2xs">
+                                    <Trophy className="w-3.5 h-3.5" />
+                                    <span>1º Lugar</span>
+                                    <span className="text-[10px] font-bold opacity-90">
+                                      {isSeparated ? (isFemale ? '• 1ª Feminino' : '• 1º Masculino') : (isFemale ? '• Campeã' : '• Campeão')}
+                                    </span>
+                                  </div>
+                                ) : isSecond ? (
+                                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-slate-500 to-slate-600 text-white font-black text-xs shadow-2xs">
+                                    <Medal className="w-3.5 h-3.5" />
+                                    <span>2º Lugar</span>
+                                    <span className="text-[10px] font-bold opacity-90">
+                                      {isSeparated ? (isFemale ? '• 2ª Feminino' : '• 2º Masculino') : '• Vice'}
+                                    </span>
+                                  </div>
+                                ) : isThird ? (
+                                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-800 to-amber-900 text-white font-black text-xs shadow-2xs">
+                                    <Award className="w-3.5 h-3.5" />
+                                    <span>3º Lugar</span>
+                                    <span className="text-[10px] font-bold opacity-90">
+                                      {isSeparated ? (isFemale ? '• 3ª Feminino' : '• 3º Masculino') : '• Bronze'}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-100 text-stone-800 font-extrabold text-xs border border-stone-200">
+                                    <span>{rank}º Lugar</span>
+                                    {isSeparated && (
+                                      <span className="text-[10px] text-stone-600 font-bold">
+                                        ({isFemale ? 'Feminino' : 'Masculino'})
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+
+                                {isSeparated && item.standing.rank !== rank && (
+                                  <span className="text-[10px] font-mono text-stone-500 font-semibold" title="Colocação geral no torneio">
+                                    ({item.standing.rank}º geral)
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Modality Pill */}
+                              <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${modalityConfig.bg}`}>
+                                {modalityConfig.label}
+                              </span>
                             </div>
-                            <div className="text-base font-black text-stone-900 font-mono mt-0.5">
-                              {item.standing.points}
-                              {item.tournament.rounds ? (
-                                <span className="text-xs font-semibold text-stone-400 ml-1">
-                                  / {item.tournament.rounds} pts
+
+                            {/* Tournament Title */}
+                            <h4
+                              className="font-extrabold text-stone-900 text-sm sm:text-base leading-snug line-clamp-2 mt-1 mb-1.5"
+                              title={item.tournament.name}
+                            >
+                              {item.tournament.name}
+                            </h4>
+
+                            {/* Location & Date */}
+                            <div className="flex items-center flex-wrap gap-2.5 text-xs text-stone-500 font-medium mt-1">
+                              {(item.tournament.city || item.tournament.state) && (
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="w-3.5 h-3.5 text-stone-400" />
+                                  <span>{[item.tournament.city, item.tournament.state].filter(Boolean).join(', ')}</span>
                                 </span>
-                              ) : (
-                                <span className="text-xs font-semibold text-stone-400 ml-1">pts</span>
+                              )}
+                              {dateFormatted && (
+                                <span className="flex items-center gap-1 font-mono">
+                                  <Calendar className="w-3.5 h-3.5 text-stone-400" />
+                                  <span>{dateFormatted}</span>
+                                </span>
                               )}
                             </div>
                           </div>
 
-                          <div className="text-right">
-                            <div className="inline-flex items-center gap-1 text-[11px] font-bold text-stone-400">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              Finalizado
+                          {/* Bottom: Pontuação & Metric Highlights */}
+                          <div className="mt-4 pt-2.5 border-t border-stone-200/70 flex items-center justify-between">
+                            <div>
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                                Pontuação
+                              </div>
+                              <div className="text-base sm:text-lg font-black text-stone-900 font-mono mt-0.5">
+                                {item.standing.points}
+                                {item.tournament.rounds ? (
+                                  <span className="text-xs font-semibold text-stone-400 ml-1">
+                                    / {item.tournament.rounds} pts
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-semibold text-stone-400 ml-1">pts</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              <div className="inline-flex items-center gap-1 text-[11px] font-bold text-stone-500">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                Finalizado
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+
+                  {/* Seta Direita: Colocações anteriores / mais antigas */}
+                  <button
+                    type="button"
+                    onClick={handleNextPlacements}
+                    disabled={!canGoNext}
+                    className={`p-2.5 sm:p-3 rounded-2xl border transition-all shrink-0 flex items-center justify-center cursor-pointer shadow-xs ${
+                      !canGoNext
+                        ? 'opacity-25 cursor-not-allowed bg-stone-100 text-stone-400 border-stone-200'
+                        : 'bg-white hover:bg-stone-50 text-stone-700 hover:text-amber-600 border-stone-300 hover:border-amber-400 hover:shadow-md active:scale-95'
+                    }`}
+                    title="Ver próximas colocações"
+                    aria-label="Ver próximas colocações"
+                  >
+                    <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 pointer-events-none" />
+                  </button>
                 </div>
+
+                {/* Paginação inferior com bolinhas caso haja mais de 2 colocações */}
+                {recentPlacements.length > 2 && (
+                  <div className="mt-3.5 pt-2.5 border-t border-stone-200/60 flex items-center justify-between text-xs text-stone-600 px-1 flex-wrap gap-2">
+                    <span className="text-[11px] font-mono">
+                      Exibindo torneios {placementsIndex + 1}–{Math.min(placementsIndex + 2, recentPlacements.length)} de {recentPlacements.length}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {Array.from({ length: Math.ceil(recentPlacements.length / 2) }).map((_, pIdx) => {
+                        const isActive = Math.floor(placementsIndex / 2) === pIdx;
+                        return (
+                          <button
+                            key={`placement-page-dot-${pIdx}`}
+                            type="button"
+                            onClick={() => setPlacementsIndex(pIdx * 2)}
+                            className={`h-2 rounded-full transition-all cursor-pointer ${
+                              isActive ? 'w-6 bg-amber-500' : 'w-2 bg-stone-300 hover:bg-stone-400'
+                            }`}
+                            title={`Ir para torneios ${pIdx * 2 + 1} e ${Math.min((pIdx + 1) * 2, recentPlacements.length)}`}
+                            aria-label={`Página ${pIdx + 1}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="py-7 px-5 text-center bg-stone-50/50">

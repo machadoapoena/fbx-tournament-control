@@ -1006,7 +1006,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
                       ? 'bg-gradient-to-b from-slate-50/80 via-white to-stone-50 border-slate-300 hover:border-slate-400 hover:shadow-md'
                       : 'bg-gradient-to-b from-orange-50/60 via-white to-amber-50/20 border-amber-700/30 hover:border-amber-700/50 hover:shadow-md'
                   }`}
-                  title={`Ver histórico de colocações no top 3 de ${player.name}`}
+                  title={`Ver pódios e colocações no top 3 de ${player.name}`}
                 >
                   <div>
                     {/* Header: Rank Medal Badge */}
