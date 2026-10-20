@@ -6,51 +6,72 @@ const monthsPt: Record<string, string> = {
   sep: 'Set', set: 'Set', oct: 'Out', out: 'Out', nov: 'Nov', dec: 'Dez', dez: 'Dez'
 };
 
-const mNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+const monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthMap: Record<string, number> = {
+  jan: 1, feb: 2, fev: 2, mar: 3, apr: 4, abr: 4,
+  may: 5, mai: 5, jun: 6, jul: 7, aug: 8, ago: 8,
+  sep: 9, set: 9, oct: 10, out: 10, nov: 11, dec: 12, dez: 12
+};
 
-export function normalizePeriod(raw: string): string {
+export function normalizePeriod(raw: string, targetFormat: 'fide' | 'cbx' = 'fide'): string {
   if (!raw) return '';
   const s = String(raw).trim();
 
-  // YYYY-Mmm (e.g. "2026-Oct", "2025-Aug", "2024-Apr")
+  // YYYY-Mmm or YYYY/Mmm (e.g. "2026-Oct", "2023-Feb", "2026-Out")
   const yearMonthNameMatch = s.match(/^(\d{4})\s*[-/]\s*([a-zA-Z]{3,})$/);
   if (yearMonthNameMatch) {
     const y = yearMonthNameMatch[1];
-    const mText = yearMonthNameMatch[2].toLowerCase().slice(0, 3);
-    const mName = monthsPt[mText] || mText.toUpperCase();
-    return `${mName}/${y}`;
+    const mStr = yearMonthNameMatch[2].toLowerCase().slice(0, 3);
+    const mNum = monthMap[mStr];
+    if (mNum) {
+      if (targetFormat === 'cbx') {
+        const mPt = monthsPt[mStr] || monthsEn[mNum - 1];
+        return `${mPt}/${y}`;
+      }
+      return `${y}-${monthsEn[mNum - 1]}`;
+    }
   }
 
   // YYYY-MM or YYYY/MM
   const isoMatch = s.match(/^(\d{4})[/-](\d{1,2})(?:[/-]\d{1,2})?$/);
   if (isoMatch) {
+    const y = isoMatch[1];
     const m = parseInt(isoMatch[2], 10);
-    if (m >= 1 && m <= 12) return `${mNames[m - 1]}/${isoMatch[1]}`;
+    if (m >= 1 && m <= 12) {
+      if (targetFormat === 'cbx') {
+        return `${String(m).padStart(2, '0')}/${y}`;
+      }
+      return `${y}-${monthsEn[m - 1]}`;
+    }
   }
 
-  // MM/YYYY
-  const slashMatch = s.match(/^(\d{1,2})[/-](\d{4})$/);
+  // MM/YYYY or Mmm/YYYY (e.g. "10/2026", "Out/2026", "Oct/2026")
+  const slashMatch = s.match(/^([a-zA-Z]{3,}|\d{1,2})[/-](\d{4})$/);
   if (slashMatch) {
-    const m = parseInt(slashMatch[1], 10);
-    if (m >= 1 && m <= 12) return `${mNames[m - 1]}/${slashMatch[2]}`;
+    const y = slashMatch[2];
+    const mPart = slashMatch[1].toLowerCase();
+    const mNum = monthMap[mPart.slice(0, 3)] || parseInt(mPart, 10);
+    if (mNum >= 1 && mNum <= 12) {
+      if (targetFormat === 'cbx') {
+        return `${String(mNum).padStart(2, '0')}/${y}`;
+      }
+      return `${y}-${monthsEn[mNum - 1]}`;
+    }
   }
 
-  // Month Name YYYY (e.g. "May 2024", "Jul-2023", "2024 May")
+  // Month Name YYYY (e.g. "Oct 2026", "May 2024", "2026 Oct")
   const textMonthMatch = s.match(/([a-zA-Z]{3,})\s*[-/,\s]\s*(\d{4})/) || s.match(/(\d{4})\s*[-/,\s]\s*([a-zA-Z]{3,})/);
   if (textMonthMatch) {
     const isYearFirst = /^\d{4}$/.test(textMonthMatch[1]);
     const y = isYearFirst ? textMonthMatch[1] : textMonthMatch[2];
-    const mText = (isYearFirst ? textMonthMatch[2] : textMonthMatch[1]).toLowerCase().slice(0, 3);
-    const mName = monthsPt[mText] || mText.toUpperCase();
-    return `${mName}/${y}`;
-  }
-
-  // Month Name YY (e.g. "May 24")
-  const shortYearMatch = s.match(/([a-zA-Z]{3,})\s*[-/,\s]\s*(\d{2})$/);
-  if (shortYearMatch) {
-    const mText = shortYearMatch[1].toLowerCase().slice(0, 3);
-    const mName = monthsPt[mText] || mText.toUpperCase();
-    return `${mName}/20${shortYearMatch[2]}`;
+    const mPart = (isYearFirst ? textMonthMatch[2] : textMonthMatch[1]).toLowerCase().slice(0, 3);
+    const mNum = monthMap[mPart];
+    if (mNum && mNum >= 1 && mNum <= 12) {
+      if (targetFormat === 'cbx') {
+        return `${String(mNum).padStart(2, '0')}/${y}`;
+      }
+      return `${y}-${monthsEn[mNum - 1]}`;
+    }
   }
 
   return s;
@@ -59,12 +80,6 @@ export function normalizePeriod(raw: string): string {
 export function parsePeriodYearMonth(raw: string): { year: number; month: number } {
   if (!raw) return { year: 0, month: 0 };
   const s = String(raw).trim();
-
-  const monthMap: Record<string, number> = {
-    jan: 1, feb: 2, fev: 2, mar: 3, apr: 4, abr: 4,
-    may: 5, mai: 5, jun: 6, jul: 7, aug: 8, ago: 8,
-    sep: 9, set: 9, oct: 10, out: 10, nov: 11, dec: 12, dez: 12
-  };
 
   // 1. "YYYY-Mon" or "YYYY/Mon" or "YYYY-MM" or "YYYY/MM"
   const yFirst = s.match(/^(\d{4})[-/]([a-zA-Z]{3,}|\d{1,2})/);
@@ -120,7 +135,7 @@ export function extractRatingNumber(text: string | null | undefined): number | n
 
 /**
  * Parses FIDE ratings history according to official FIDE profile-table_calc specification:
- * - Coluna 0: Período (ex: "2026-Oct", "2024-Apr")
+ * - Coluna 0: Período (ex: "2026-Oct", "2023-Feb")
  * - Coluna 1: STD. RATING (Clássico / Pensado)
  * - Coluna 2: STD GMS (partidas jogadas - desconsiderar)
  * - Coluna 3: RPD (Rating Rápido)
@@ -138,14 +153,11 @@ export function parseFideTableData(input: string): RatingHistoryEntry[] {
     if (cells.length < 2) return;
 
     const rawPeriod = (cells[0] || '').trim();
-    if (!rawPeriod || rawPeriod.toUpperCase().includes('PERIOD') || rawPeriod.toUpperCase().includes('STD')) return;
+    if (!rawPeriod || /period|std\. rating/i.test(rawPeriod)) return;
 
-    const period = normalizePeriod(rawPeriod);
-    if (!period) return;
+    const period = normalizePeriod(rawPeriod, 'fide');
+    if (!period || /period/i.test(period)) return;
 
-    // Column mapping:
-    // FIDE (6+ cols): Col 0: Period, Col 1: Std, Col 3: Rapid, Col 5: Blitz
-    // CBX / Condensed (4 cols): Col 0: Period, Col 1: Std, Col 2: Rapid, Col 3: Blitz
     let std: number | null = null;
     let rap: number | null = null;
     let blz: number | null = null;
@@ -221,27 +233,45 @@ export function parseFideTableData(input: string): RatingHistoryEntry[] {
     }
   }
 
-  // 2. Plain text / Tab-separated copied lines
-  const lines = trimmed.split(/\r?\n/);
-  for (const line of lines) {
-    const cleanLine = line.trim();
-    if (!cleanLine || cleanLine.toUpperCase().includes('PERIOD') || cleanLine.toUpperCase().includes('STD. RATING')) {
-      continue;
-    }
+  // 2. Plain text / Tab-separated / Space-separated / Line-by-line cell streams
+  const lines = trimmed.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
-    let tokens: string[] = [];
-    if (line.includes('\t')) {
-      // Direct tab separated without collapsing empty tabs
-      tokens = line.split('\t').map(t => t.trim());
-    } else {
-      // Split by 2 or more spaces or single space
-      tokens = cleanLine.split(/\s{2,}/);
-      if (tokens.length < 2) {
-        tokens = cleanLine.split(/\s+/);
+  // Check if each table cell was pasted on its own line
+  const periodRegex = /^(\d{4}[-/][a-zA-Z]{3,}|\d{4}[-/]\d{1,2}|[a-zA-Z]{3,}[-/]\d{4})$/;
+  let singleCellCount = 0;
+  for (let i = 0; i < Math.min(25, lines.length); i++) {
+    if (periodRegex.test(lines[i])) singleCellCount++;
+  }
+  const isLineByLineCells = singleCellCount >= 2 && lines.some(l => !l.includes('\t') && !l.includes(' ') && periodRegex.test(l));
+
+  if (isLineByLineCells) {
+    let currentPeriod: string | null = null;
+    let currentCells: string[] = [];
+    for (const l of lines) {
+      if (periodRegex.test(l)) {
+        if (currentPeriod) {
+          processRowCells([currentPeriod, ...currentCells]);
+        }
+        currentPeriod = l;
+        currentCells = [];
+      } else {
+        currentCells.push(l);
       }
     }
-
-    processRowCells(tokens);
+    if (currentPeriod) {
+      processRowCells([currentPeriod, ...currentCells]);
+    }
+  } else {
+    for (const line of lines) {
+      if (/period|std\. rating/i.test(line)) continue;
+      let tokens: string[] = [];
+      if (line.includes('\t')) {
+        tokens = line.split('\t').map(t => t.trim());
+      } else {
+        tokens = line.split(/\s{2,}|\s+/);
+      }
+      processRowCells(tokens);
+    }
   }
 
   return Array.from(historyMap.values());
@@ -372,101 +402,10 @@ export function parseCbxTableData(input: string): RatingHistoryEntry[] {
 }
 
 /**
- * Generates an authentic rating progression trajectory when external scraping is unavailable or blocked by Cloudflare.
- * Strictly guarantees that:
- * 1. The final rating in the timeline matches the player's official current rating.
- * 2. Realistic plateaus exist (months without rating variations) to reflect real tournament schedules.
- * 3. Specific registered profiles (e.g., FIDE 22747281) return exact historical records.
+ * Real data policy: No synthetic or fabricated rating history is ever generated.
+ * Returns empty array so only genuine FIDE / CBX records are displayed.
  */
-export function generateRealisticHistory(
-  ratings: { standard?: number | null; rapid?: number | null; blitz?: number | null },
-  source: 'fide' | 'cbx',
-  fedId?: string | number
-): RatingHistoryEntry[] {
-  // Exact official FIDE record for Ana Beatriz Castro Mendes Lima (ID 22747281)
-  if (source === 'fide' && String(fedId).trim() === '22747281') {
-    return [
-      { period: '2024-Apr', standard: null, rapid: 1529, blitz: null },
-      { period: '2024-May', standard: null, rapid: 1529, blitz: null },
-      { period: '2024-Jun', standard: null, rapid: 1520, blitz: null },
-      { period: '2024-Jul', standard: null, rapid: 1520, blitz: null },
-      { period: '2024-Aug', standard: 1631, rapid: 1520, blitz: null },
-      { period: '2024-Sep', standard: 1631, rapid: 1520, blitz: null },
-      { period: '2024-Oct', standard: 1631, rapid: 1520, blitz: null },
-      { period: '2024-Nov', standard: 1631, rapid: 1520, blitz: 1631 },
-      { period: '2024-Dec', standard: 1625, rapid: 1537, blitz: 1609 },
-      { period: '2025-Jan', standard: 1625, rapid: 1537, blitz: 1609 },
-      { period: '2025-Feb', standard: 1625, rapid: 1537, blitz: 1575 },
-      { period: '2025-Mar', standard: 1625, rapid: 1537, blitz: 1575 },
-      { period: '2025-Apr', standard: 1625, rapid: 1571, blitz: 1587 },
-      { period: '2025-May', standard: 1625, rapid: 1571, blitz: 1587 },
-      { period: '2025-Jun', standard: 1625, rapid: 1571, blitz: 1587 },
-      { period: '2025-Jul', standard: 1625, rapid: 1571, blitz: 1587 },
-      { period: '2025-Aug', standard: 1584, rapid: 1625, blitz: 1600 },
-      { period: '2025-Sep', standard: 1584, rapid: 1625, blitz: 1600 },
-      { period: '2025-Oct', standard: 1584, rapid: 1625, blitz: 1600 },
-      { period: '2025-Nov', standard: 1584, rapid: 1625, blitz: 1600 },
-      { period: '2025-Dec', standard: 1584, rapid: 1625, blitz: 1600 },
-      { period: '2026-Jan', standard: 1584, rapid: 1625, blitz: 1600 },
-      { period: '2026-Feb', standard: 1584, rapid: 1625, blitz: 1600 },
-      { period: '2026-Mar', standard: 1584, rapid: 1625, blitz: 1600 },
-      { period: '2026-Apr', standard: 1584, rapid: 1625, blitz: 1600 },
-    ];
-  }
-
-  const curStd = ratings.standard && ratings.standard > 0 ? ratings.standard : null;
-  const curRap = ratings.rapid && ratings.rapid > 0 ? ratings.rapid : null;
-  const curBlz = ratings.blitz && ratings.blitz > 0 ? ratings.blitz : null;
-
-  if (!curStd && !curRap && !curBlz) {
-    return [];
-  }
-
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const periods: string[] = [];
-
-  for (let year = 2024; year <= 2026; year++) {
-    const startM = year === 2024 ? 4 : 0;
-    const endM = year === 2026 ? 3 : 11;
-    for (let m = startM; m <= endM; m++) {
-      periods.push(`${year}-${months[m]}`);
-    }
-  }
-
-  const seedNum = (fedId ? parseInt(String(fedId).replace(/\D/g, '').slice(-4), 10) : 0) || (curStd || 1600);
-
-  const createTimeline = (finalVal: number | null, offsetSeed: number) => {
-    if (!finalVal || finalVal <= 0) return Array(periods.length).fill(null);
-    const series: (number | null)[] = new Array(periods.length);
-    series[periods.length - 1] = finalVal;
-
-    let currentVal = finalVal;
-    for (let i = periods.length - 2; i >= 0; i--) {
-      const stepSeed = Math.sin(offsetSeed * 10 + i * 2.3 + seedNum) * 10000;
-      const stayEqual = Math.abs(stepSeed) % 10 < 5.5;
-      if (!stayEqual) {
-        const delta = Math.round(Math.sin(offsetSeed * 3 + i * 1.7) * 12);
-        currentVal = Math.max(1000, currentVal - delta);
-      }
-      series[i] = currentVal;
-    }
-    return series;
-  };
-
-  const stdSeries = createTimeline(curStd, 1);
-  const rapSeries = createTimeline(curRap, 2);
-  const blzSeries = createTimeline(curBlz, 3);
-
-  const result: RatingHistoryEntry[] = [];
-  for (let i = 0; i < periods.length; i++) {
-    result.push({
-      period: periods[i],
-      standard: stdSeries[i],
-      rapid: rapSeries[i],
-      blitz: blzSeries[i],
-    });
-  }
-
-  return result;
+export function generateRealisticHistory(): RatingHistoryEntry[] {
+  return [];
 }
 

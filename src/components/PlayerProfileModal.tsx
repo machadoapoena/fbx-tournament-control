@@ -26,9 +26,11 @@ import {
   Trophy,
   Medal,
   Target,
-  MapPin
+  MapPin,
+  ClipboardPaste,
+  FileText
 } from 'lucide-react';
-import { parseFideTableData, generateRealisticHistory, sortHistoryChronological } from '../utils/fideParser';
+import { parseFideTableData, parseCbxTableData, sortHistoryChronological } from '../utils/fideParser';
 import { tournamentService } from '../lib/services/tournamentService';
 import { playerService } from '../lib/services/playerService';
 import { findMatchingPlayer } from '../lib/playerMatching';
@@ -80,6 +82,12 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   // Local state for histories so changes/syncing reflect immediately
   const [localCbxHistory, setLocalCbxHistory] = useState<RatingHistoryEntry[]>(player?.cbxHistory || []);
   const [localFideHistory, setLocalFideHistory] = useState<RatingHistoryEntry[]>(player?.fideHistory || []);
+
+  // Modal para colar tabela de histórico oficial (FIDE / CBX)
+  const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
+  const [pasteModalTarget, setPasteModalTarget] = useState<'fide' | 'cbx'>('fide');
+  const [pastedRawText, setPastedRawText] = useState('');
+  const [isSavingPastedHistory, setIsSavingPastedHistory] = useState(false);
 
   // Paginação sob demanda de colocações em torneios finalizados (2 por vez)
   const [placementsIndex, setPlacementsIndex] = useState(0);
@@ -410,7 +418,68 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
     };
   }, [activeHistory, selectedModality]);
 
-  // Fetch online history from backend API and/or fast client proxies
+  // Abrir modal de colagem de tabela oficial
+  const handleOpenPasteModal = (target?: 'fide' | 'cbx') => {
+    const t = target || (selectedSource === 'cbx' ? 'cbx' : 'fide');
+    setPasteModalTarget(t);
+    setPastedRawText('');
+    setIsPasteModalOpen(true);
+  };
+
+  // Parser em tempo real dos dados colados
+  const parsedPastedEntries = useMemo(() => {
+    if (!pastedRawText.trim()) return [];
+    if (pasteModalTarget === 'fide') {
+      return sortHistoryChronological(parseFideTableData(pastedRawText), true);
+    } else {
+      return sortHistoryChronological(parseCbxTableData(pastedRawText), true);
+    }
+  }, [pastedRawText, pasteModalTarget]);
+
+  // Salvar dados reais colados
+  const handleSavePastedHistory = async () => {
+    if (!player || parsedPastedEntries.length === 0) return;
+    setIsSavingPastedHistory(true);
+    try {
+      const sorted = sortHistoryChronological(parsedPastedEntries, true);
+      const isFide = pasteModalTarget === 'fide';
+      const newFide = isFide ? sorted : localFideHistory;
+      const newCbx = isFide ? localCbxHistory : sorted;
+
+      if (isFide) {
+        setLocalFideHistory(sorted);
+        setSelectedSource('fide');
+      } else {
+        setLocalCbxHistory(sorted);
+        setSelectedSource('cbx');
+      }
+
+      if (onUpdatePlayerHistory && player.id) {
+        onUpdatePlayerHistory(player.id, newCbx, newFide);
+      }
+
+      if (player.id) {
+        await playerService.updatePlayer(player.id, {
+          fideHistory: newFide,
+          cbxHistory: newCbx,
+        });
+      }
+
+      const newest = sorted[sorted.length - 1]?.period;
+      const oldest = sorted[0]?.period;
+      setHistorySourceStatus(
+        `✓ ${sorted.length} períodos reais da ${isFide ? 'FIDE' : 'CBX'} gravados com sucesso (${newest} até ${oldest})!`
+      );
+      setIsPasteModalOpen(false);
+      setPastedRawText('');
+    } catch (err) {
+      console.error('Erro ao salvar histórico colado:', err);
+    } finally {
+      setIsSavingPastedHistory(false);
+    }
+  };
+
+  // Fetch online history from backend API and/or fast client proxies (ONLY REAL DATA)
   const handleFetchOnlineHistory = async (targetSource?: 'fide' | 'cbx') => {
     if (!player) return;
     const effectiveSource: 'fide' | 'cbx' = targetSource || (selectedSource === 'cbx' ? 'cbx' : 'fide');
@@ -419,10 +488,10 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
     const sourceLabel = effectiveSource === 'fide' ? 'FIDE' : 'CBX';
     setHistorySourceStatus(`Consultando registros oficiais da ${sourceLabel}...`);
 
-    let cbxCount = 0;
-    let fideCount = 0;
-    let currentCbxHistory: RatingHistoryEntry[] = localCbxHistory;
-    let currentFideHistory: RatingHistoryEntry[] = localFideHistory;
+    let cbxCount = localCbxHistory.length;
+    let fideCount = localFideHistory.length;
+    let currentCbxHistory: RatingHistoryEntry[] = [...localCbxHistory];
+    let currentFideHistory: RatingHistoryEntry[] = [...localFideHistory];
 
     try {
       // 1. Tenta chamar o endpoint de API (/api/player-history)
@@ -464,7 +533,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
         }
       }
     } catch {
-      // Se o endpoint de backend não responder (ex: hospedagem estática no Vercel), prossegue para busca client-side
+      // Falha na API de raspagem
     }
 
     // 2. Se for FIDE e ainda não tiver dados via API, busca via proxies client-side
@@ -507,51 +576,14 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
       }
     }
 
-    // 3. Fallback inteligente client-side (garante sincronização perfeita mesmo sob bloqueio Cloudflare da FIDE)
-    if (effectiveSource !== 'cbx' && fideCount === 0) {
-      const fideRatings = {
-        standard: player.ratingFideStandard || player.ratingFide || null,
-        rapid: player.ratingFideRapid || null,
-        blitz: player.ratingFideBlitz || null,
-      };
-      if (player.fideId || fideRatings.standard || fideRatings.rapid || fideRatings.blitz) {
-        setHistorySourceStatus('Sincronizando evolução oficial de rating FIDE...');
-        // Simula busca realista de 500ms para feedback visual perceptível
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const generated = generateRealisticHistory(fideRatings, 'fide', player.fideId);
-        if (generated.length > 0) {
-          currentFideHistory = sortHistoryChronological(generated, true);
-          fideCount = currentFideHistory.length;
-          setLocalFideHistory(currentFideHistory);
-        }
-      }
-    }
-
-    if (effectiveSource !== 'fide' && cbxCount === 0) {
-      const cbxRatings = {
-        standard: player.ratingCbxStandard || player.ratingCbx || null,
-        rapid: player.ratingCbxRapid || null,
-        blitz: player.ratingCbxBlitz || null,
-      };
-      if (player.cbxId || cbxRatings.standard || cbxRatings.rapid || cbxRatings.blitz) {
-        setHistorySourceStatus('Sincronizando evolução oficial de rating CBX...');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const generated = generateRealisticHistory(cbxRatings, 'cbx', player.cbxId);
-        if (generated.length > 0) {
-          currentCbxHistory = sortHistoryChronological(generated, true);
-          cbxCount = currentCbxHistory.length;
-          setLocalCbxHistory(currentCbxHistory);
-        }
-      }
-    }
-
     setSelectedSource(effectiveSource);
 
+    // Se encontrou dados REAIS via busca online, persiste no Firebase
     if (cbxCount > 0 || fideCount > 0) {
       const parts: string[] = [];
       if (cbxCount > 0) parts.push(`${cbxCount} períodos CBX`);
       if (fideCount > 0) parts.push(`${fideCount} períodos FIDE`);
-      setHistorySourceStatus(`✓ Histórico carregado com sucesso! (${parts.join(', ')})`);
+      setHistorySourceStatus(`✓ Histórico oficial carregado com sucesso! (${parts.join(', ')})`);
 
       if (onUpdatePlayerHistory && player.id) {
         onUpdatePlayerHistory(
@@ -560,17 +592,23 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
           currentFideHistory
         );
       }
+      if (player.id) {
+        playerService.updatePlayer(player.id, {
+          cbxHistory: currentCbxHistory,
+          fideHistory: currentFideHistory,
+        }).catch(() => {});
+      }
     } else {
       if (effectiveSource === 'fide') {
         setHistorySourceStatus(
           player?.fideId 
-            ? 'Histórico FIDE indisponível no momento. Utilize a opção "Colar Tabela FIDE".' 
+            ? 'Histórico FIDE indisponível na busca automática (bloqueio do site da FIDE). Utilize o botão "Colar Tabela FIDE" para importar os dados reais copiados de ratings.fide.com.' 
             : 'Este enxadrista não possui ID FIDE vinculado.'
         );
       } else {
         setHistorySourceStatus(
           player?.cbxId
-            ? 'Histórico CBX indisponível no momento.'
+            ? 'Histórico CBX indisponível na busca automática. Utilize o botão "Colar Tabela CBX" para importar os dados reais.'
             : 'Este enxadrista não possui ID CBX vinculado.'
         );
       }
@@ -1453,7 +1491,13 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                     <div className="mt-2 space-y-3">
                       <p className="text-xs text-stone-600 leading-relaxed">
                         {player?.fideId ? (
-                          <>Registros de rating da FIDE para o ID <strong className="font-mono">{player.fideId}</strong>.</>
+                          <>
+                            Registros oficiais de rating da FIDE para o ID <strong className="font-mono">{player.fideId}</strong>.
+                            <br />
+                            <span className="text-[11px] text-stone-500">
+                              Devido a restrições de acesso no site da FIDE, você pode colar diretamente a tabela de evolução oficial para carregar todos os dados reais.
+                            </span>
+                          </>
                         ) : (
                           <>Este enxadrista não possui ID FIDE vinculado.</>
                         )}
@@ -1462,12 +1506,22 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                         {player?.fideId && (
                           <button
                             type="button"
+                            onClick={() => handleOpenPasteModal('fide')}
+                            className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                          >
+                            <ClipboardPaste className="w-3.5 h-3.5" />
+                            <span>Colar Tabela FIDE</span>
+                          </button>
+                        )}
+                        {player?.fideId && (
+                          <button
+                            type="button"
                             onClick={() => handleFetchOnlineHistory('fide')}
                             disabled={isLoadingHistory}
-                            className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                            className="px-3.5 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 border border-stone-300 text-stone-800 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                           >
                             <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHistory ? 'animate-spin' : ''}`} />
-                            <span>Buscar Novamente</span>
+                            <span>Buscar Online</span>
                           </button>
                         )}
                         {player?.fideId && (
@@ -1487,19 +1541,29 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                     <div className="mt-2 space-y-3">
                       <p className="text-xs text-stone-600 leading-relaxed">
                         {player?.cbxId
-                          ? `Registros de rating da CBX para o ID ${player.cbxId}.`
+                          ? `Registros oficiais de rating da CBX para o ID ${player.cbxId}.`
                           : 'Este enxadrista não possui ID CBX cadastrado.'}
                       </p>
                       <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                         {player?.cbxId && (
                           <button
                             type="button"
+                            onClick={() => handleOpenPasteModal('cbx')}
+                            className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                          >
+                            <ClipboardPaste className="w-3.5 h-3.5" />
+                            <span>Colar Tabela CBX</span>
+                          </button>
+                        )}
+                        {player?.cbxId && (
+                          <button
+                            type="button"
                             onClick={() => handleFetchOnlineHistory('cbx')}
                             disabled={isLoadingHistory}
-                            className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                            className="px-3.5 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 border border-stone-300 text-stone-800 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                           >
                             <RefreshCw className={`w-3.5 h-3.5 ${isLoadingHistory ? 'animate-spin' : ''}`} />
-                            <span>Buscar Novamente</span>
+                            <span>Buscar Online</span>
                           </button>
                         )}
                         {player?.cbxId && (
@@ -1840,6 +1904,16 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => handleOpenPasteModal(selectedSource || 'fide')}
+                  className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title={`Colar tabela oficial ${selectedSource === 'cbx' ? 'CBX' : 'FIDE'} copiada`}
+                >
+                  <ClipboardPaste className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Colar Tabela {selectedSource === 'cbx' ? 'CBX' : 'FIDE'}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setShowTableDetails(!showTableDetails)}
                   className="px-2.5 py-1.5 rounded-lg border border-stone-300 bg-white hover:bg-stone-100 text-stone-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
@@ -1993,6 +2067,190 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal Dialog: Colar Tabela / Histórico FIDE ou CBX */}
+      {isPasteModalOpen && (
+        <div 
+          className="fixed inset-0 z-[70] bg-stone-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsPasteModalOpen(false);
+          }}
+        >
+          <div 
+            className="bg-white rounded-2xl max-w-xl w-full border border-stone-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-5 py-4 bg-stone-900 text-white flex items-center justify-between border-b border-stone-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-400 flex items-center justify-center">
+                  <ClipboardPaste className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">
+                    Importar Histórico Oficial {pasteModalTarget === 'fide' ? 'FIDE' : 'CBX'}
+                  </h3>
+                  <p className="text-[11px] text-stone-400">
+                    {player.name} {pasteModalTarget === 'fide' && player.fideId ? `(ID FIDE: ${player.fideId})` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPasteModalOpen(false)}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-white hover:bg-stone-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5 overflow-y-auto space-y-4 text-xs">
+              {/* Instructions banner */}
+              <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3.5 text-amber-950 space-y-2">
+                <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Como obter e colar os dados reais da {pasteModalTarget.toUpperCase()}:</span>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 text-stone-700 pl-1 text-[11px] leading-relaxed">
+                  <li>
+                    {pasteModalTarget === 'fide' && player.fideId ? (
+                      <span>
+                        Acesse a página oficial do jogador na FIDE:
+                        <a
+                          href={`https://ratings.fide.com/profile/${player.fideId}/chart`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ml-1 inline-flex items-center gap-1 font-bold text-amber-700 hover:underline cursor-pointer"
+                        >
+                          <span>Abrir ratings.fide.com/.../chart</span>
+                          <ExternalLink className="w-3 h-3 inline" />
+                        </a>
+                      </span>
+                    ) : (
+                      <span>Acesse a página oficial do jogador no site da {pasteModalTarget.toUpperCase()}.</span>
+                    )}
+                  </li>
+                  <li>
+                    Selecione e copie (Ctrl+C) as linhas da tabela de histórico de ratings (contendo Period, STD, RPD, BLZ...) ou o texto/HTML da tabela.
+                  </li>
+                  <li>
+                    Cole abaixo no campo de texto e clique em <strong>Salvar Histórico Real</strong>.
+                  </li>
+                </ol>
+              </div>
+
+              {/* Textarea */}
+              <div>
+                <label className="block text-xs font-bold text-stone-800 mb-1.5">
+                  Cole aqui a tabela copiada do site da {pasteModalTarget.toUpperCase()}:
+                </label>
+                <textarea
+                  value={pastedRawText}
+                  onChange={(e) => setPastedRawText(e.target.value)}
+                  placeholder={
+                    pasteModalTarget === 'fide'
+                      ? 'Exemplo:\nPeriod\tSTD. RATING\tSTD GMS\tRPD\tRPD GMS\tBLZ\tBLZ GMS\n2026-Oct\t2265\t9\t2200\t4\t2180\t5\n...\n2023-Feb\t2100\t5\t1980\t3\t1950\t4'
+                      : 'Cole as linhas com Mês/Ano, Clássico, Rápido e Blitz da CBX...'
+                  }
+                  rows={6}
+                  className="w-full p-3 border border-stone-300 rounded-xl text-xs font-mono bg-stone-50 focus:bg-white focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 outline-hidden transition-all resize-y"
+                />
+              </div>
+
+              {/* Parsing feedback */}
+              {pastedRawText.trim() && (
+                <div>
+                  {parsedPastedEntries.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-start gap-2 text-emerald-900 text-xs">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-bold">
+                            ✓ {parsedPastedEntries.length} períodos oficiais identificados!
+                          </p>
+                          <p className="text-[11px] text-emerald-800 mt-0.5">
+                            De <strong>{parsedPastedEntries[parsedPastedEntries.length - 1]?.period}</strong> (mais recente) até <strong>{parsedPastedEntries[0]?.period}</strong> (mais antigo).
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Preview Table */}
+                      <div className="border border-stone-200 rounded-xl overflow-hidden">
+                        <div className="px-3 py-1.5 bg-stone-100 border-b border-stone-200 text-[11px] font-bold text-stone-700 flex justify-between">
+                          <span>Prévia dos dados identificados ({Math.min(5, parsedPastedEntries.length)} de {parsedPastedEntries.length})</span>
+                          <span className="font-mono text-stone-500">Mais recentes primeiro</span>
+                        </div>
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead className="bg-stone-50 text-[10px] text-stone-500 font-bold uppercase border-b border-stone-200">
+                            <tr>
+                              <th className="py-1.5 px-3">Período</th>
+                              <th className="py-1.5 px-3">Clássico</th>
+                              <th className="py-1.5 px-3">Rápido</th>
+                              <th className="py-1.5 px-3">Blitz</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-stone-100 font-mono text-[11px]">
+                            {[...parsedPastedEntries].reverse().slice(0, 5).map((row, idx) => (
+                              <tr key={`prev-${row.period}-${idx}`} className="hover:bg-stone-50">
+                                <td className="py-1.5 px-3 font-bold text-stone-800">{row.period}</td>
+                                <td className="py-1.5 px-3 text-emerald-800">{row.standard ?? '-'}</td>
+                                <td className="py-1.5 px-3 text-sky-800">{row.rapid ?? '-'}</td>
+                                <td className="py-1.5 px-3 text-amber-800">{row.blitz ?? '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-start gap-2 text-rose-900 text-xs">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold">Nenhum período de rating reconhecido</p>
+                        <p className="text-[11px] text-rose-700 mt-0.5">
+                          Certifique-se de copiar as linhas da tabela de ratings do site da {pasteModalTarget.toUpperCase()} contendo o período (ex: 2026-Oct, 2023-Feb...) e os valores de rating.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3.5 bg-stone-50 border-t border-stone-200 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setIsPasteModalOpen(false)}
+                className="px-3.5 py-2 border border-stone-300 bg-white hover:bg-stone-100 text-stone-700 font-semibold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSavePastedHistory}
+                disabled={parsedPastedEntries.length === 0 || isSavingPastedHistory}
+                className="px-4 py-2 bg-stone-900 hover:bg-stone-800 disabled:opacity-40 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                {isSavingPastedHistory ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Gravando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Salvar Histórico Real ({parsedPastedEntries.length})</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

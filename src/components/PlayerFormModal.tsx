@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Player, ChessTitle, Gender, ScrapedRatingsResult } from '../types/chess';
 import { calculateAge, getAgeCategory } from '../lib/exportUtils';
 import { playerService } from '../lib/services/playerService';
+import { parseFideTableData, parseCbxTableData, sortHistoryChronological } from '../utils/fideParser';
 import { 
   X, 
   Save, 
@@ -332,9 +333,39 @@ export const PlayerFormModal: React.FC<PlayerFormModalProps> = ({
     // If snippet was pasted, check local parse first for immediate response
     if (rawSnippetToUse) {
       const localResult = parseLocalSnippet(rawSnippetToUse);
-      if (localResult.fide?.standard || localResult.fide?.rapid || localResult.fide?.blitz || localResult.cbx?.standard || localResult.cbx?.rapid || localResult.cbx?.blitz) {
+      const tableFideHist = parseFideTableData(rawSnippetToUse);
+      const tableCbxHist = parseCbxTableData(rawSnippetToUse);
+
+      const hasDirectRatings = !!(localResult.fide?.standard || localResult.fide?.rapid || localResult.fide?.blitz || localResult.cbx?.standard || localResult.cbx?.rapid || localResult.cbx?.blitz);
+      const hasHistory = tableFideHist.length > 0 || tableCbxHist.length > 0;
+
+      if (hasDirectRatings || hasHistory) {
         const updates: Partial<typeof formData> = {};
         const foundList: string[] = [];
+
+        if (tableFideHist.length > 0) {
+          const sorted = sortHistoryChronological(tableFideHist, true);
+          updates.fideHistory = sorted;
+          const newest = sorted[sorted.length - 1];
+          if (newest) {
+            if (newest.standard && !localResult.fide?.standard) updates.ratingFideStandard = newest.standard;
+            if (newest.rapid && !localResult.fide?.rapid) updates.ratingFideRapid = newest.rapid;
+            if (newest.blitz && !localResult.fide?.blitz) updates.ratingFideBlitz = newest.blitz;
+          }
+          foundList.push(`Histórico FIDE (${sorted.length} períodos)`);
+        }
+
+        if (tableCbxHist.length > 0) {
+          const sorted = sortHistoryChronological(tableCbxHist, true);
+          updates.cbxHistory = sorted;
+          const newest = sorted[sorted.length - 1];
+          if (newest) {
+            if (newest.standard && !localResult.cbx?.standard) updates.ratingCbxStandard = newest.standard;
+            if (newest.rapid && !localResult.cbx?.rapid) updates.ratingCbxRapid = newest.rapid;
+            if (newest.blitz && !localResult.cbx?.blitz) updates.ratingCbxBlitz = newest.blitz;
+          }
+          foundList.push(`Histórico CBX (${sorted.length} períodos)`);
+        }
 
         if (localResult.fide) {
           if (localResult.fide.standard) {
@@ -372,7 +403,7 @@ export const PlayerFormModal: React.FC<PlayerFormModalProps> = ({
         setIsScraping(false);
         setScrapeFeedback({
           type: 'success',
-          message: 'Ratings extraídos do HTML colado com sucesso!',
+          message: 'Ratings e histórico extraídos do texto/HTML colado com sucesso!',
           details: foundList.join(' • '),
         });
         return;

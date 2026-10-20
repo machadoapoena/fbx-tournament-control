@@ -479,10 +479,8 @@ export const INITIAL_PLAYERS: Omit<Player, 'id'>[] = RAW_INITIAL_PLAYERS.map((p)
   const isAna = p.fideId === '22747281';
   return {
     ...p,
-    fideHistory: isAna 
-      ? ANA_BEATRIZ_FIDE_HISTORY 
-      : buildSeedTimeline(p.ratingFideStandard || p.ratingFide, p.ratingFideRapid, p.ratingFideBlitz, p.fideId || 'fide'),
-    cbxHistory: buildSeedTimeline(p.ratingCbxStandard || p.ratingCbx, p.ratingCbxRapid, p.ratingCbxBlitz, p.cbxId || 'cbx'),
+    fideHistory: isAna ? ANA_BEATRIZ_FIDE_HISTORY : [],
+    cbxHistory: [],
   };
 });
 

@@ -1,4 +1,4 @@
-import { parseFideTableData, parseCbxTableData, generateRealisticHistory, sortHistoryChronological } from '../src/utils/fideParser';
+import { parseFideTableData, parseCbxTableData, sortHistoryChronological } from '../src/utils/fideParser';
 import { RatingHistoryEntry } from '../src/types/chess';
 
 async function getParsedBody(req: any): Promise<any> {
@@ -161,31 +161,7 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 3. Fallback: If FIDE scraping returned 0 (e.g. Cloudflare block on Vercel), generate authentic progression
-    if (targetSource !== 'cbx' && fideHistory.length === 0 && (fideId || currentRatings?.fideStandard || currentRatings?.fideRapid || currentRatings?.fideBlitz)) {
-      const fideRatings = {
-        standard: currentRatings?.fideStandard || null,
-        rapid: currentRatings?.fideRapid || null,
-        blitz: currentRatings?.fideBlitz || null,
-      };
-      const generated = generateRealisticHistory(fideRatings, 'fide', fideId);
-      if (generated.length > 0) {
-        fideHistory = generated;
-      }
-    }
-
-    // 4. Fallback: If CBX scraping returned 0, generate authentic progression
-    if (targetSource !== 'fide' && cbxHistory.length === 0 && (cbxId || currentRatings?.cbxStandard || currentRatings?.cbxRapid || currentRatings?.cbxBlitz)) {
-      const cbxRatings = {
-        standard: currentRatings?.cbxStandard || null,
-        rapid: currentRatings?.cbxRapid || null,
-        blitz: currentRatings?.cbxBlitz || null,
-      };
-      const generated = generateRealisticHistory(cbxRatings, 'cbx', cbxId);
-      if (generated.length > 0) {
-        cbxHistory = generated;
-      }
-    }
+    // Real data policy: No synthetic or simulated history is generated.
 
     // Always ensure chronological sorting (oldest to newest: past on left -> present on right)
     cbxHistory = sortHistoryChronological(cbxHistory, true);
